@@ -1,277 +1,440 @@
-
-import React, { useState, useCallback } from 'react';
-import { generateLogo, generateMockup } from './services/geminiService';
+import React, { useState, ChangeEvent, useCallback } from 'react';
+import { generateMockup, generateLogo, generateBranding, BrandingConcept } from './services/geminiService';
 import { fileToBase64 } from './utils/fileUtils';
 
-type Page = 'mockups' | 'logos';
+type Page = 'mockups' | 'logos' | 'branding';
 
 interface ImageState {
   id: number;
-  src: string | null;
   isLoading: boolean;
   error: string | null;
+  imageData: { url: string; mimeType: string; } | null;
   prompt: string;
-  style?: string;
+  style?: string; // For logos
 }
 
-// --- MOCKUP PROMPTS (ENGLISH) ---
-const mockupPrompts: string[] = [
-    "Logo on a classic black t-shirt, worn by a person in a cafe.",
-    "Logo engraved on a rustic wooden plaque hanging on a brick wall.",
-    "Logo on a sleek, modern storefront window with city reflections.",
-    "Logo printed on a white ceramic coffee mug, held in two hands.",
-    "Logo embossed on a leather-bound journal cover.",
-    "Logo on the side of a corporate delivery van, matte finish, parked in a business district.",
-    "Logo on a large billboard in a bustling city square at dusk.",
-    "Logo on a premium shopping bag held by a stylish person.",
-    "Logo on the screen of a laptop in a modern office setting.",
-    "Logo as a watermark on a professional photograph.",
-    "Logo on a frosted glass office door.",
-    "Logo embroidered on a baseball cap.",
-    "Logo on a business card, close-up shot with textured paper.",
-    "Logo on a metal water bottle placed on a yoga mat.",
-    "Logo on a flag waving on a tall flagpole with a clear blue sky background.",
-];
+interface BrandingState {
+  id: number;
+  isLoading: boolean;
+  error: string | null;
+  concept: BrandingConcept | null;
+}
 
-// --- LOGO STYLES (ENGLISH) ---
-const logoStyles: string[] = [
-    "minimalist logo, clean lines, geometric",
-    "vintage logo, hand-drawn, distressed texture",
-    "watercolor logo, soft edges, pastel colors",
-    "neon logo, glowing, vibrant, on a dark brick wall",
-    "3D logo, metallic, chrome finish",
-    "origami logo, folded paper style, geometric",
-    "gradient logo, smooth color transition, modern",
-    "flat icon logo, simple shapes, bold colors",
-    "line art logo, single continuous line, elegant",
-    "mascot logo, cartoon character, friendly",
-    "calligraphy logo, elegant script, flowing lines",
-    "abstract logo, organic shapes, conceptual",
-];
+// --- Helper Components ---
 
-// --- HELPER FUNCTIONS ---
-const getRandomItems = <T,>(arr: T[], num: number): T[] => {
-  const shuffled = [...arr].sort(() => 0.5 - Math.random());
-  return shuffled.slice(0, num);
+const Spinner = () => <div className="spinner"></div>;
+
+const ResultCard = ({ 
+    state, 
+    onRegenerate, 
+    children 
+}: { 
+    state: ImageState | BrandingState, 
+    onRegenerate: () => void, 
+    children: React.ReactNode 
+}) => {
+  return (
+    <div className="result-card">
+      {state.isLoading && <Spinner />}
+      {state.error && !state.isLoading && <div className="error-message">{state.error}</div>}
+      {!state.isLoading && !state.error && children}
+      <div className="card-overlay">
+        <button onClick={onRegenerate} className="card-button" disabled={state.isLoading}>Regenerar</button>
+        {'imageData' in state && state.imageData && (
+             <a href={state.imageData.url} download={`generated-image-${state.id}.png`} className="card-button">Descargar</a>
+        )}
+      </div>
+    </div>
+  );
 };
 
-// --- COMPONENTS ---
 
-const MockupGenerator: React.FC = () => {
-    const [logoFile, setLogoFile] = useState<File | null>(null);
+// --- Generator Components ---
+
+const MockupGenerator = () => {
+    const [file, setFile] = useState<File | null>(null);
     const [brandContext, setBrandContext] = useState('');
-    const [images, setImages] = useState<ImageState[]>([]);
     const [isGeneratingAll, setIsGeneratingAll] = useState(false);
+    const [mockups, setMockups] = useState<ImageState[]>([]);
 
-    const generateImage = useCallback(async (id: number, prompt: string) => {
-        if (!logoFile) return;
-
-        setImages(prev => prev.map(img => img.id === id ? { ...img, isLoading: true, error: null } : img));
-        
-        try {
-            const base64Logo = await fileToBase64(logoFile);
-            const fullPrompt = brandContext ? `${brandContext}. ${prompt}` : prompt;
-            const result = await generateMockup(fullPrompt, {
-                mimeType: logoFile.type,
-                data: base64Logo,
-            });
-            setImages(prev => prev.map(img => img.id === id ? { ...img, src: `data:${result.mimeType};base64,${result.base64Image}`, isLoading: false } : img));
-        } catch (err) {
-            const errorMessage = err instanceof Error ? err.message : 'Error desconocido';
-            setImages(prev => prev.map(img => img.id === id ? { ...img, isLoading: false, error: errorMessage } : img));
-        }
-    }, [logoFile, brandContext]);
+    const MOCKUP_PROMPTS = [
+      "Logo on a classic black t-shirt, worn by a person in a cafe.",
+      "Logo on a frosted glass office door.",
+      "Logo on a white ceramic coffee mug on a wooden desk.",
+      "Logo on a luxury shopping bag held by a person.",
+      "Logo embroidered on a baseball cap.",
+      "Logo on the side of a corporate delivery van.",
+      "Logo on a modern smartphone screen, held in hand.",
+      "Logo on a large outdoor billboard in a bustling city square.",
+      "Logo printed on a stack of business cards.",
+      "Logo as a watermark on a professional photograph.",
+      "Logo on a reusable canvas tote bag.",
+      "Logo engraved on a metal water bottle.",
+      "Logo on a storefront window.",
+      "Logo on a laptop lid in a co-working space.",
+      "Logo on the sail of a sailboat."
+    ];
     
+    const getRandomPrompts = useCallback(() => {
+        const shuffled = [...MOCKUP_PROMPTS].sort(() => 0.5 - Math.random());
+        return shuffled.slice(0, 10);
+    }, []);
+
+    const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+        if (event.target.files && event.target.files.length > 0) {
+            setFile(event.target.files[0]);
+        }
+    };
+
+    const runGeneration = async (prompt: string, index: number) => {
+        if (!file) return;
+
+        setMockups(prev => {
+            const newMockups = [...prev];
+            newMockups[index] = { ...newMockups[index], isLoading: true, error: null };
+            return newMockups;
+        });
+
+        try {
+            const base64Data = await fileToBase64(file);
+            const imagePart = { inlineData: { data: base64Data, mimeType: file.type } };
+            const result = await generateMockup(prompt, brandContext, imagePart);
+            const url = `data:${result.mimeType};base64,${result.base64Data}`;
+            
+            setMockups(prev => {
+                const newMockups = [...prev];
+                newMockups[index] = { ...newMockups[index], isLoading: false, imageData: { url, mimeType: result.mimeType } };
+                return newMockups;
+            });
+
+        } catch (e: any) {
+            setMockups(prev => {
+                const newMockups = [...prev];
+                newMockups[index] = { ...newMockups[index], isLoading: false, error: e.message };
+                return newMockups;
+            });
+        }
+    };
+
     const handleGenerateAllClick = async () => {
-        if (!logoFile) {
+        if (!file) {
             alert("Por favor, sube un logo primero.");
             return;
         }
         setIsGeneratingAll(true);
-        const selectedPrompts = getRandomItems(mockupPrompts, 10);
-        const initialImages = selectedPrompts.map((prompt, i) => ({ id: i, src: null, isLoading: false, error: null, prompt }));
-        setImages(initialImages);
-
-        await Promise.all(initialImages.map(img => generateImage(img.id, img.prompt)));
+        const selectedPrompts = getRandomPrompts();
+        const initialStates: ImageState[] = selectedPrompts.map((prompt, i) => ({
+            id: i,
+            isLoading: false,
+            error: null,
+            imageData: null,
+            prompt: prompt,
+        }));
+        setMockups(initialStates);
+        
+        await Promise.all(selectedPrompts.map((prompt, i) => runGeneration(prompt, i)));
         setIsGeneratingAll(false);
     };
-
-    const handleRegenerateClick = (id: number, prompt: string) => {
-        generateImage(id, prompt);
-    };
     
+    const handleRegenerateClick = (index: number) => {
+        const prompt = mockups[index].prompt;
+        runGeneration(prompt, index);
+    };
+
     return (
         <>
             <div className="page-header">
-                <h2>Generador de Mockups</h2>
-                <p>Visualiza tu marca en escenarios realistas con un solo clic.</p>
+                <h1>Generador de Mockups con IA</h1>
+                <p>Visualiza tu marca al instante. Sube tu logo, dale contexto y observa cómo la IA lo aplica a 10 escenarios realistas.</p>
             </div>
             <div className="control-panel">
-                 <div className="step">
-                    <label className="step-label"><span>1</span>Sube tu logo</label>
-                    <div className="file-input-wrapper">
-                        <input type="file" accept="image/*" onChange={(e) => setLogoFile(e.target.files?.[0] || null)} />
-                        <p className="file-input-text">
-                           {logoFile ? logoFile.name : <><span>Haz clic para subir</span> o arrastra y suelta</>}
-                        </p>
-                    </div>
+                 <div className="control-step">
+                    <h2>1. Sube tu logo (preferiblemente PNG transparente)</h2>
+                    <label htmlFor="file-upload" className={`file-upload-area ${file ? 'has-file' : ''}`}>
+                      <p>{file ? 'Archivo seleccionado:' : 'Haz clic o arrastra un archivo aquí'}</p>
+                      {file && <span className="file-name">{file.name}</span>}
+                    </label>
+                    <input id="file-upload" type="file" onChange={handleFileChange} accept="image/*" style={{ display: 'none' }} />
                 </div>
-                <div className="step">
-                    <label className="step-label"><span>2</span>Contexto de la Marca (Opcional)</label>
+                 <div className="control-step">
+                    <h2>2. Contexto de la Marca (Opcional)</h2>
                     <textarea value={brandContext} onChange={(e) => setBrandContext(e.target.value)} placeholder="Ej: una marca de café artesanal y ecológica..." />
                 </div>
-                <button className="generate-button" onClick={handleGenerateAllClick} disabled={!logoFile || isGeneratingAll}>
-                    {isGeneratingAll && <div className="spinner" style={{width: '20px', height: '20px', border:'3px solid rgba(0,0,0,0.2)', borderTopColor: '#111827'}}></div>}
-                    Generar 10 Mockups
+                <button onClick={handleGenerateAllClick} disabled={isGeneratingAll || !file} className="generate-button">
+                    {isGeneratingAll ? 'Generando...' : 'Generar 10 Mockups'}
                 </button>
             </div>
             <div className="results-grid">
-                {images.map(img => <ImageCard key={img.id} image={img} onRegenerate={handleRegenerateClick} />)}
+                {mockups.map((mockup, index) => (
+                    <ResultCard key={mockup.id} state={mockup} onRegenerate={() => handleRegenerateClick(index)}>
+                      <div className="card-content">
+                        <div className="card-image-container">
+                           {mockup.imageData && <img src={mockup.imageData.url} alt={`Mockup ${mockup.prompt}`} className="card-image" />}
+                        </div>
+                        <div className="card-footer">
+                            <p className="card-prompt-text">{mockup.prompt}</p>
+                        </div>
+                      </div>
+                    </ResultCard>
+                ))}
             </div>
         </>
     );
 };
 
-const LogoGenerator: React.FC = () => {
-    const [logoDescription, setLogoDescription] = useState('');
-    const [images, setImages] = useState<ImageState[]>([]);
+const LogoGenerator = () => {
+    const [description, setDescription] = useState('');
     const [isGeneratingAll, setIsGeneratingAll] = useState(false);
+    const [logos, setLogos] = useState<ImageState[]>([]);
 
-    const generateImage = useCallback(async (id: number, prompt: string, style: string) => {
-        setImages(prev => prev.map(img => img.id === id ? { ...img, src: null, isLoading: true, error: null } : img));
-        
+    const LOGO_STYLES = ["Minimalist", "Vintage", "Watercolor", "Geometric", "3D", "Neon", "Hand-drawn", "Abstract", "Modern", "Corporate"];
+
+    const runGeneration = async (style: string, index: number) => {
+        setLogos(prev => {
+            const newLogos = [...prev];
+            newLogos[index] = { ...newLogos[index], isLoading: true, error: null };
+            return newLogos;
+        });
+
         try {
-            const fullPrompt = `${logoDescription}, ${style}`;
-            const result = await generateLogo(fullPrompt);
-            setImages(prev => prev.map(img => img.id === id ? { ...img, src: `data:${result.mimeType};base64,${result.base64Image}`, isLoading: false } : img));
-        } catch (err) {
-            const errorMessage = err instanceof Error ? err.message : 'Error desconocido';
-            setImages(prev => prev.map(img => img.id === id ? { ...img, isLoading: false, error: errorMessage } : img));
+            const result = await generateLogo(description, style);
+            const url = `data:${result.mimeType};base64,${result.base64Data}`;
+            
+             setLogos(prev => {
+                const newLogos = [...prev];
+                const updatedLogo = { ...newLogos[index], isLoading: false, imageData: { url, mimeType: result.mimeType } };
+                return Object.assign([], prev, { [index]: updatedLogo });
+            });
+        } catch (e: any) {
+             setLogos(prev => {
+                const newLogos = [...prev];
+                const updatedLogo = { ...newLogos[index], isLoading: false, error: e.message };
+                return Object.assign([], prev, { [index]: updatedLogo });
+            });
         }
-    }, [logoDescription]);
-
+    };
+    
     const handleGenerateAllClick = async () => {
-        if (!logoDescription) {
+        if (!description) {
             alert("Por favor, describe el logo que quieres crear.");
             return;
         }
         setIsGeneratingAll(true);
-        const selectedStyles = getRandomItems(logoStyles, 10);
-        const initialImages = selectedStyles.map((style, i) => ({
+        const initialStates: ImageState[] = LOGO_STYLES.map((style, i) => ({
             id: i,
-            src: null,
             isLoading: false,
             error: null,
-            prompt: `${logoDescription}, ${style}`,
+            imageData: null,
+            prompt: description,
             style: style,
         }));
-        setImages(initialImages);
-
-        await Promise.all(initialImages.map(img => generateImage(img.id, img.prompt, img.style!)));
+        setLogos(initialStates);
+        
+        await Promise.all(LOGO_STYLES.map((style, i) => runGeneration(style, i)));
         setIsGeneratingAll(false);
     };
 
-    const handleRegenerateClick = (id: number, prompt: string, style?: string) => {
+    const handleRegenerateClick = (index: number) => {
+        const style = logos[index].style;
         if (style) {
-            generateImage(id, prompt, style);
+            runGeneration(style, index);
         }
     };
 
     return (
         <>
             <div className="page-header">
-                <h2>Generador de Logos</h2>
-                <p>Crea conceptos de logos únicos a partir de tus ideas.</p>
+                <h1>Generador de Logos con IA</h1>
+                <p>Transforma tus ideas en logos. Describe tu concepto y la IA te dará 10 variaciones en diferentes estilos artísticos.</p>
             </div>
             <div className="control-panel">
-                <div className="step">
-                    <label className="step-label"><span>1</span>Describe tu logo ideal</label>
-                    <textarea value={logoDescription} onChange={(e) => setLogoDescription(e.target.value)} placeholder="Ej: un zorro astuto leyendo un libro para una librería..." />
+                <div className="control-step">
+                    <h2>1. Describe el logo que imaginas</h2>
+                    <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Ej: Un zorro astuto leyendo un libro para una librería..." />
                 </div>
-                <button className="generate-button" onClick={handleGenerateAllClick} disabled={!logoDescription || isGeneratingAll}>
-                    {isGeneratingAll && <div className="spinner" style={{width: '20px', height: '20px', border:'3px solid rgba(0,0,0,0.2)', borderTopColor: '#111827'}}></div>}
-                    Generar 10 Logos
+                <button onClick={handleGenerateAllClick} disabled={isGeneratingAll || !description} className="generate-button">
+                    {isGeneratingAll ? 'Generando...' : 'Generar 10 Logos'}
                 </button>
             </div>
             <div className="results-grid">
-                {images.map(img => <ImageCard key={img.id} image={img} onRegenerate={(id, prompt, style) => handleRegenerateClick(id, prompt, style)} />)}
+                {logos.map((logo, index) => (
+                     <ResultCard key={logo.id} state={logo} onRegenerate={() => handleRegenerateClick(index)}>
+                       <div className="card-content">
+                         <div className="card-image-container">
+                            {logo.imageData && <img src={logo.imageData.url} alt={`Logo idea: ${logo.prompt}`} className="card-image" />}
+                         </div>
+                         <div className="card-footer">
+                             <p className="card-prompt-text">Estilo: <span>{logo.style || 'Desconocido'}</span></p>
+                         </div>
+                       </div>
+                     </ResultCard>
+                ))}
             </div>
         </>
     );
 };
 
-interface ImageCardProps {
-  image: ImageState;
-  onRegenerate: (id: number, prompt: string, style?: string) => void;
-}
 
-const ImageCard: React.FC<ImageCardProps> = ({ image, onRegenerate }) => {
-    const handleDownload = () => {
-        if (image.src) {
-            const link = document.createElement('a');
-            link.href = image.src;
-            link.download = `generated-image-${image.id}.png`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+const BrandingAssistant = () => {
+    const [description, setDescription] = useState('');
+    const [isGeneratingAll, setIsGeneratingAll] = useState(false);
+    const [concepts, setConcepts] = useState<BrandingState[]>([]);
+
+    const runGeneration = async (index: number) => {
+        setConcepts(prev => {
+            const newConcepts = [...prev];
+            newConcepts[index] = { ...newConcepts[index], isLoading: true, error: null };
+            return newConcepts;
+        });
+
+        try {
+            // We call the main function once and distribute the results
+            const results = await generateBranding(description);
+            if (results.length > index) {
+                setConcepts(prev => {
+                    const newConcepts = [...prev];
+                    newConcepts[index] = { ...newConcepts[index], isLoading: false, concept: results[index] };
+                    return newConcepts;
+                });
+            } else {
+                 throw new Error("No se recibió un concepto para este índice.");
+            }
+        } catch (e: any) {
+            setConcepts(prev => {
+                const newConcepts = [...prev];
+                newConcepts[index] = { ...newConcepts[index], isLoading: false, error: e.message };
+                return newConcepts;
+            });
+        }
+    };
+    
+    const handleGenerateAllClick = async () => {
+        if (!description) {
+            alert("Por favor, describe la esencia de la marca.");
+            return;
+        }
+        setIsGeneratingAll(true);
+        const initialStates: BrandingState[] = Array.from({ length: 10 }, (_, i) => ({
+            id: i,
+            isLoading: true,
+            error: null,
+            concept: null,
+        }));
+        setConcepts(initialStates);
+
+        try {
+            const results = await generateBranding(description);
+            setConcepts(results.map((concept, i) => ({
+                id: i,
+                isLoading: false,
+                error: null,
+                concept: concept
+            })));
+        } catch (e: any) {
+             setConcepts(initialStates.map(s => ({...s, isLoading: false, error: e.message})));
+        } finally {
+            setIsGeneratingAll(false);
         }
     };
 
-    const styleText = image.style ? image.style.split(',')[0] : image.prompt.slice(0, 30) + '...';
+    const handleRegenerateClick = (index: number) => {
+        // This is tricky as we get all 10 at once.
+        // A simple approach is to re-run the whole batch and replace just one.
+        // A better approach for a single regen would need a more complex API call.
+        // For now, let's just show an alert.
+        alert("La regeneración individual para conceptos de branding se implementará pronto. Por ahora, puedes generar un nuevo lote completo.");
+    };
 
     return (
-        <div className="card">
-            {image.isLoading ? (
-                <div className="card-status">
-                    <div className="spinner"></div>
-                    <p className="card-status-prompt">Generando "{styleText}"</p>
+        <>
+            <div className="page-header">
+                <h1>Asistente de Branding con IA</h1>
+                <p>Define la identidad de una marca. Describe su esencia y obtén 10 conceptos completos con paletas de colores, tipografías y tono de voz.</p>
+            </div>
+             <div className="control-panel">
+                <div className="control-step">
+                    <h2>1. Describe la esencia de la marca</h2>
+                    <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Ej: Lujo, exclusividad y tradición para una marca de relojes..." />
                 </div>
-            ) : image.error ? (
-                <div className="card-status">
-                     <p className="error-message">{image.error}</p>
-                     <p className="card-status-prompt">Prompt: "{styleText}"</p>
-                </div>
-            ) : image.src ? (
-                <>
-                    <img src={image.src} alt={image.prompt} className="card-image" />
-                    <div className="card-overlay">
-                        <div className="card-actions">
-                            <button className="card-button" onClick={handleDownload} title="Descargar">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                            </button>
-                            <button className="card-button" onClick={() => onRegenerate(image.id, image.prompt, image.style)} title="Regenerar">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                            </button>
-                        </div>
-                    </div>
-                </>
-            ) : null}
-        </div>
+                <button onClick={handleGenerateAllClick} disabled={isGeneratingAll || !description} className="generate-button">
+                    {isGeneratingAll ? 'Generando...' : 'Generar 10 Ideas'}
+                </button>
+            </div>
+            <div className="results-grid">
+                {concepts.map((conceptState, index) => (
+                    <ResultCard key={conceptState.id} state={conceptState} onRegenerate={() => handleRegenerateClick(index)}>
+                        {conceptState.concept && (
+                            <div className="branding-card">
+                                <div className="branding-section">
+                                    <h4>Paleta de Colores</h4>
+                                    <div className="palette">
+                                        {conceptState.concept.colorPalette.map(color => (
+                                            <div key={color} className="color-swatch" style={{ backgroundColor: color }} title={color}>
+                                                <span>{color}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="branding-section">
+                                    <h4>Tipografía</h4>
+                                    <p>{conceptState.concept.typographySuggestion}</p>
+                                </div>
+                                <div className="branding-section">
+                                    <h4>Tono de Voz</h4>
+                                    <p>{conceptState.concept.toneOfVoice}</p>
+                                </div>
+                                <div className="branding-footer">
+                                    {/* Footer content can go here if needed */}
+                                </div>
+                            </div>
+                        )}
+                    </ResultCard>
+                ))}
+            </div>
+        </>
     );
 };
 
+// --- Main App Component ---
+
 function App() {
-  const [activePage, setActivePage] = useState<Page>('mockups');
+  const [page, setPage] = useState<Page>('mockups');
+
+  const renderPage = () => {
+    switch(page) {
+      case 'mockups':
+        return <MockupGenerator />;
+      case 'logos':
+        return <LogoGenerator />;
+      case 'branding':
+        return <BrandingAssistant />;
+      default:
+        return <MockupGenerator />;
+    }
+  };
 
   return (
-    <>
+    <div className="app-container">
       <aside className="sidebar">
         <div className="sidebar-header">
-          <h1>CreativeIA<span>.</span></h1>
+          Suite Creativa <span>IA</span>
         </div>
-        <nav>
-          <div className={`nav-tab ${activePage === 'mockups' ? 'active' : ''}`} onClick={() => setActivePage('mockups')}>
+        <nav className="sidebar-nav">
+          <div className={`nav-tab ${page === 'mockups' ? 'active' : ''}`} onClick={() => setPage('mockups')}>
             Generador de Mockups
           </div>
-          <div className={`nav-tab ${activePage === 'logos' ? 'active' : ''}`} onClick={() => setActivePage('logos')}>
+          <div className={`nav-tab ${page === 'logos' ? 'active' : ''}`} onClick={() => setPage('logos')}>
             Generador de Logos
+          </div>
+           <div className={`nav-tab ${page === 'branding' ? 'active' : ''}`} onClick={() => setPage('branding')}>
+            Asistente de Branding
           </div>
         </nav>
       </aside>
       <main className="main-container">
-        {activePage === 'mockups' ? <MockupGenerator /> : <LogoGenerator />}
+        {renderPage()}
       </main>
-    </>
+    </div>
   );
 }
 
