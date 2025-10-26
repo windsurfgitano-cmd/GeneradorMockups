@@ -9,11 +9,15 @@ import {
     generateVideo,
     getVideoOperationStatus,
     analyzeImage,
+    generateCopywriting,
+    generatePersonas,
+    generateSeoIdeas,
+    generateNamesAndSlogans,
 } from './services/geminiService';
 import { fileToBase64 } from './utils/fileUtils';
 
 // Types
-type Page = 'mockups' | 'logos' | 'branding' | 'social' | 'campaign' | 'scripts' | 'video' | 'analyzer';
+type Page = 'mockups' | 'logos' | 'branding' | 'social' | 'campaign' | 'scripts' | 'video' | 'analyzer' | 'copywriting' | 'personas' | 'seo' | 'names';
 type Status = 'idle' | 'loading' | 'success' | 'error';
 
 interface ResultItem {
@@ -38,11 +42,15 @@ function App() {
     mockups: { title: 'Generador de Mockups', description: 'Sube tu logo y obtén 10 mockups profesionales generados por IA al instante.' },
     logos: { title: 'Generador de Logos', description: 'Describe el logo que imaginas y la IA creará 10 conceptos con diferentes estilos.' },
     branding: { title: 'Asistente de Branding', description: 'Define la esencia de una marca y recibe 10 propuestas completas de identidad visual.' },
+    copywriting: { title: 'Asistente de Copywriting', description: 'Crea 10 variantes de textos publicitarios de alto impacto para diferentes formatos.' },
     social: { title: 'Posts para Redes', description: 'Describe tu objetivo y la IA generará 10 pares de imagen y texto listos para publicar.' },
     campaign: { title: 'Ideas de Campaña', description: 'Detalla tu producto y objetivo para recibir 10 conceptos de campañas de marketing.' },
     scripts: { title: 'Guiones para Reels', description: 'Dale un tema a la IA y obtén 10 guiones estructurados para videos cortos virales.' },
     video: { title: 'Generador de Videos', description: 'Crea videos cortos a partir de una imagen y una descripción usando IA generativa.' },
     analyzer: { title: 'Analizador de Imágenes', description: 'Sube una imagen y recibe un análisis experto desde una perspectiva de marketing.' },
+    personas: { title: 'Creador de Personas', description: 'Convierte la descripción de tu público en 10 perfiles de "Buyer Persona" detallados.' },
+    seo: { title: 'Asistente SEO', description: 'Introduce un tema y obtén 10 ideas de contenido optimizado para motores de búsqueda.' },
+    names: { title: 'Nombres y Slogans', description: 'Supera el bloqueo creativo generando 10 nombres y slogans para tu nueva marca.' },
   };
 
   const renderPage = () => {
@@ -55,6 +63,10 @@ function App() {
       case 'scripts': return <ScriptGenerator />;
       case 'video': return <VideoGenerator />;
       case 'analyzer': return <ImageAnalyzer />;
+      case 'copywriting': return <CopywritingAssistant />;
+      case 'personas': return <PersonaGenerator />;
+      case 'seo': return <SeoAssistant />;
+      case 'names': return <NameSloganGenerator />;
       default: return <MockupGenerator />;
     }
   };
@@ -86,6 +98,224 @@ function App() {
 }
 
 // --- Tool Components ---
+const GenericGenerator = ({
+    inputs,
+    buttonText,
+    onGenerate,
+    results,
+    CardComponent,
+    grid = true
+}: {
+    inputs: React.ReactNode;
+    buttonText: string;
+    onGenerate: (id?: number) => void;
+    results: ResultItem[];
+    CardComponent: React.FC<any>;
+    grid?: boolean;
+}) => {
+    const isGenerating = results.some(r => r.status === 'loading');
+    
+    const handleGenerate = () => {
+        onGenerate();
+    };
+
+    return (
+        <>
+            <div className="control-panel">
+                {inputs}
+                <button className="generate-button" onClick={handleGenerate} disabled={isGenerating}>
+                    {isGenerating ? 'Generando...' : buttonText}
+                </button>
+            </div>
+            {grid ? (
+                <div className="results-grid">
+                    {(results.length > 0 ? results : Array(10).fill({ status: 'idle' })).map((item, index) => (
+                        <CardComponent key={index} item={item} onRegenerate={() => onGenerate(item.id)} />
+                    ))}
+                </div>
+            ) : (
+                // Non-grid layout for single-result tools
+                results.map((item, index) => <CardComponent key={index} item={item} />)
+            )}
+        </>
+    );
+};
+
+
+const CopywritingAssistant = () => {
+    const [product, setProduct] = useState('');
+    const [audience, setAudience] = useState('');
+    const [tone, setTone] = useState('');
+    const [format, setFormat] = useState('Anuncio de Facebook');
+    const [results, setResults] = useState<ResultItem[]>([]);
+
+    const handleGenerate = useCallback(async (regenerateId?: number) => {
+        const fullPrompt = `Producto: ${product}\nPúblico: ${audience}\nTono: ${tone}\nFormato: ${format}`;
+        if (!product || !audience || !tone) return;
+        
+        const isMainGeneration = typeof regenerateId === 'undefined';
+        const isGenerating = results.some(r => r.status === 'loading');
+        if (isGenerating && isMainGeneration) return;
+
+        if (isMainGeneration) {
+            setResults(Array(10).fill(null).map((_, i) => ({ id: i, status: 'loading' })));
+        } else {
+            setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'loading' } : r));
+        }
+
+        try {
+            const data = await generateCopywriting(fullPrompt, isMainGeneration ? 10 : 1);
+            if (isMainGeneration) {
+                setResults(data.map((item, i) => ({ id: i, status: 'success', data: item })));
+            } else {
+                setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'success', data: data[0] } : r));
+            }
+        } catch (e: any) {
+            const errorUpdater = (item: ResultItem) => ({ ...item, status: 'error' as Status, error: e.message });
+            if (isMainGeneration) {
+                setResults(prev => prev.map(errorUpdater));
+            } else {
+                setResults(prev => prev.map(r => r.id === regenerateId ? errorUpdater(r) : r));
+            }
+        }
+    }, [product, audience, tone, format, results]);
+    
+    const inputs = (
+        <>
+            <div className="control-section">
+                <label className="control-label">Producto / Servicio</label>
+                <input type="text" value={product} onChange={(e) => setProduct(e.target.value)} placeholder="Ej: Curso online de finanzas personales" />
+            </div>
+            <div className="control-section">
+                <label className="control-label">Público Objetivo</label>
+                <input type="text" value={audience} onChange={(e) => setAudience(e.target.value)} placeholder="Ej: Millennials que quieren empezar a invertir" />
+            </div>
+            <div className="control-section">
+                <label className="control-label">Tono de Voz</label>
+                <input type="text" value={tone} onChange={(e) => setTone(e.target.value)} placeholder="Ej: Educativo, motivador y sin jerga" />
+            </div>
+             <div className="control-section">
+                <label className="control-label">Formato</label>
+                <select value={format} onChange={(e) => setFormat(e.target.value)}>
+                    <option>Anuncio de Facebook</option>
+                    <option>Título para Google Ads</option>
+                    <option>Asunto de Email</option>
+                    <option>Descripción de Producto</option>
+                </select>
+            </div>
+        </>
+    );
+
+    return <GenericGenerator inputs={inputs} buttonText={`Generar 10 Copys`} onGenerate={handleGenerate} results={results} CardComponent={CopywritingCard} />;
+};
+
+
+const PersonaGenerator = () => {
+    const [prompt, setPrompt] = useState('');
+    const [results, setResults] = useState<ResultItem[]>([]);
+
+    const handleGenerate = useCallback(async (regenerateId?: number) => {
+        if (!prompt) return;
+        const isMainGeneration = typeof regenerateId === 'undefined';
+        const isGenerating = results.some(r => r.status === 'loading');
+        if (isGenerating && isMainGeneration) return;
+
+        if (isMainGeneration) setResults(Array(10).fill(null).map((_, i) => ({ id: i, status: 'loading' })));
+        else setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'loading' } : r));
+
+        try {
+            const data = await generatePersonas(prompt, isMainGeneration ? 10 : 1);
+            if (isMainGeneration) setResults(data.map((item, i) => ({ id: i, status: 'success', data: item })));
+            else setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'success', data: data[0] } : r));
+        } catch (e: any) {
+            const errorUpdater = (item: ResultItem) => ({ ...item, status: 'error' as Status, error: e.message });
+            if (isMainGeneration) setResults(prev => prev.map(errorUpdater));
+            else setResults(prev => prev.map(r => r.id === regenerateId ? errorUpdater(r) : r));
+        }
+    }, [prompt, results]);
+
+    const inputs = (
+        <div className="control-section">
+            <label className="control-label">Describe tu producto y tu cliente ideal</label>
+            <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={3} placeholder="Ej: Una marca de café de especialidad, sostenible, para conocedores que trabajan desde casa"></textarea>
+        </div>
+    );
+    
+    return <GenericGenerator inputs={inputs} buttonText="Generar 10 Personas" onGenerate={handleGenerate} results={results} CardComponent={PersonaCard} />;
+};
+
+
+const SeoAssistant = () => {
+    const [prompt, setPrompt] = useState('');
+    const [results, setResults] = useState<ResultItem[]>([]);
+
+    const handleGenerate = useCallback(async (regenerateId?: number) => {
+        if (!prompt) return;
+        const isMainGeneration = typeof regenerateId === 'undefined';
+        const isGenerating = results.some(r => r.status === 'loading');
+        if (isGenerating && isMainGeneration) return;
+
+        if (isMainGeneration) setResults(Array(10).fill(null).map((_, i) => ({ id: i, status: 'loading' })));
+        else setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'loading' } : r));
+
+        try {
+            const data = await generateSeoIdeas(prompt, isMainGeneration ? 10 : 1);
+            if (isMainGeneration) setResults(data.map((item, i) => ({ id: i, status: 'success', data: item })));
+            else setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'success', data: data[0] } : r));
+        } catch (e: any) {
+            const errorUpdater = (item: ResultItem) => ({ ...item, status: 'error' as Status, error: e.message });
+            if (isMainGeneration) setResults(prev => prev.map(errorUpdater));
+            else setResults(prev => prev.map(r => r.id === regenerateId ? errorUpdater(r) : r));
+        }
+    }, [prompt, results]);
+
+    const inputs = (
+        <div className="control-section">
+            <label className="control-label">Tema o Palabra Clave Principal</label>
+            <input type="text" value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="Ej: cómo empezar a invertir en criptomonedas" />
+        </div>
+    );
+
+    return <GenericGenerator inputs={inputs} buttonText="Generar 10 Ideas SEO" onGenerate={handleGenerate} results={results} CardComponent={SeoCard} />;
+};
+
+
+const NameSloganGenerator = () => {
+    const [prompt, setPrompt] = useState('');
+    const [results, setResults] = useState<ResultItem[]>([]);
+
+    const handleGenerate = useCallback(async (regenerateId?: number) => {
+        if (!prompt) return;
+        const isMainGeneration = typeof regenerateId === 'undefined';
+        const isGenerating = results.some(r => r.status === 'loading');
+        if (isGenerating && isMainGeneration) return;
+
+        if (isMainGeneration) setResults(Array(10).fill(null).map((_, i) => ({ id: i, status: 'loading' })));
+        else setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'loading' } : r));
+
+        try {
+            const data = await generateNamesAndSlogans(prompt, isMainGeneration ? 10 : 1);
+            if (isMainGeneration) setResults(data.map((item, i) => ({ id: i, status: 'success', data: item })));
+            else setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'success', data: data[0] } : r));
+        } catch (e: any) {
+            const errorUpdater = (item: ResultItem) => ({ ...item, status: 'error' as Status, error: e.message });
+            if (isMainGeneration) setResults(prev => prev.map(errorUpdater));
+            else setResults(prev => prev.map(r => r.id === regenerateId ? errorUpdater(r) : r));
+        }
+    }, [prompt, results]);
+
+    const inputs = (
+        <div className="control-section">
+            <label className="control-label">Describe la esencia de tu negocio o producto</label>
+            <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={3} placeholder="Ej: Una app de delivery que solo entrega comida local y saludable"></textarea>
+        </div>
+    );
+    
+    return <GenericGenerator inputs={inputs} buttonText="Generar 10 Ideas" onGenerate={handleGenerate} results={results} CardComponent={NameSloganCard} />;
+};
+
+
+// --- Existing Components (Minor adjustments if needed) ---
 const VideoGenerator = () => {
     const [apiKeyReady, setApiKeyReady] = useState(false);
     const [imageFile, setImageFile] = useState<File | null>(null);
@@ -98,8 +328,10 @@ const VideoGenerator = () => {
     const operationRef = useRef<any>(null);
 
     const checkApiKey = async () => {
-        const hasKey = await (window as any).aistudio.hasSelectedApiKey();
-        setApiKeyReady(hasKey);
+        if ((window as any).aistudio) {
+            const hasKey = await (window as any).aistudio.hasSelectedApiKey();
+            setApiKeyReady(hasKey);
+        }
     };
 
     useEffect(() => {
@@ -109,7 +341,6 @@ const VideoGenerator = () => {
     const handleSelectKey = async () => {
         await (window as any).aistudio.openSelectKey();
         await checkApiKey();
-        // Assume success after dialog closes to avoid race conditions
         setApiKeyReady(true); 
     };
 
@@ -129,18 +360,19 @@ const VideoGenerator = () => {
                     setVideoUrl(url);
                     setProgressMessage('¡Video generado con éxito!');
                 } else {
-                    throw new Error('La operación finalizó pero no se encontró el video.');
+                    throw new Error(updatedOperation.error?.message || 'La operación finalizó pero no se encontró el video.');
                 }
                 setIsGenerating(false);
                 operationRef.current = null;
             } else {
-                // Keep polling
                 setTimeout(pollOperation, 10000);
             }
-        } catch (e: any) {
-            setError(e.message || 'Error al verificar el estado del video.');
-            if (e.message.includes("Requested entity was not found")) {
-                setError("La clave de API no es válida. Por favor, selecciona una nueva.");
+// Fix: The catch block now safely handles errors by typing the exception as `unknown` and checking if it's an `Error` instance before accessing the `message` property. This prevents the "Argument of type 'unknown' is not assignable to parameter of type 'string'" error.
+        } catch (e: unknown) {
+            const message = e instanceof Error ? e.message : 'Error al verificar el estado del video.';
+            setError(message);
+            if (message.includes("Requested entity was not found")) {
+                setError("La clave de API no es válida o no tiene permisos. Por favor, selecciona una nueva.");
                 setApiKeyReady(false);
             }
             setIsGenerating(false);
@@ -170,7 +402,7 @@ const VideoGenerator = () => {
 
             operationRef.current = initialOperation;
             setProgressMessage('Procesando video... por favor espera.');
-            setTimeout(pollOperation, 10000); // Start polling
+            setTimeout(pollOperation, 10000);
 
         } catch (e: any) {
             setError(e.message || 'Error al iniciar la generación de video.');
@@ -181,6 +413,10 @@ const VideoGenerator = () => {
             setIsGenerating(false);
         }
     };
+
+    if (!(window as any).aistudio) {
+        return <div className="control-panel">La funcionalidad de video no está disponible en este entorno.</div>;
+    }
 
     if (!apiKeyReady) {
         return (
@@ -228,7 +464,6 @@ const VideoGenerator = () => {
         </>
     );
 };
-
 
 const ImageAnalyzer = () => {
     const [imageFile, setImageFile] = useState<File | null>(null);
@@ -306,281 +541,205 @@ const MockupGenerator = () => {
     const [logoFile, setLogoFile] = useState<File | null>(null);
     const [brandContext, setBrandContext] = useState('');
     const [results, setResults] = useState<ResultItem[]>([]);
-    const [isGenerating, setIsGenerating] = useState(false);
+    
+    const handleGenerate = useCallback(async (regenerateId?: number) => {
+        if (!logoFile) return;
 
-    const handleGenerate = async () => {
-        if (!logoFile || isGenerating) return;
-        setIsGenerating(true);
-        const initialResults: ResultItem[] = Array(10).fill(null).map((_, i) => ({ id: i, status: 'loading' }));
-        setResults(initialResults);
+        const isMainGeneration = typeof regenerateId === 'undefined';
+        const isGenerating = results.some(r => r.status === 'loading');
+        if (isGenerating && isMainGeneration) return;
+
+        if (isMainGeneration) {
+            setResults(Array(10).fill(null).map((_, i) => ({ id: i, status: 'loading' })));
+        } else {
+            setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'loading' } : r));
+        }
 
         try {
             const base64Logo = await fileToBase64(logoFile);
             const mimeType = logoFile.type;
-            
-            const promises = initialResults.map(item =>
-                generateMockup({ base64Logo, mimeType, brandContext })
-                    .then(data => ({ ...item, status: 'success' as Status, imageUrl: `data:${data.mimeType};base64,${data.base64Image}` }))
-                    .catch(e => ({ ...item, status: 'error' as Status, error: e.message }))
-            );
 
-            for (const promise of promises) {
-                const result = await promise;
-                setResults(prev => prev.map(r => r.id === result.id ? result : r));
+            if (isMainGeneration) {
+                const promises = Array(10).fill(null).map((_, i) => 
+                    generateMockup({ base64Logo, mimeType, brandContext })
+                        .then(data => ({ id: i, status: 'success' as Status, imageUrl: `data:${data.mimeType};base64,${data.base64Image}` }))
+                        .catch(e => ({ id: i, status: 'error' as Status, error: e.message }))
+                );
+                
+                for (const promise of promises) {
+                    const result = await promise;
+                    setResults(prev => prev.map(r => r.id === result.id ? result : r));
+                }
+            } else {
+                 const data = await generateMockup({ base64Logo, mimeType, brandContext });
+                 setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'success', imageUrl: `data:${data.mimeType};base64,${data.base64Image}` } : r));
             }
         } catch (e: any) {
-            setResults(initialResults.map(item => ({ ...item, status: 'error', error: e.message || 'Failed to process image.' })));
-        } finally {
-            setIsGenerating(false);
+             const errorUpdater = (item: ResultItem) => ({ ...item, status: 'error' as Status, error: e.message });
+            if (isMainGeneration) {
+                setResults(prev => prev.map(errorUpdater));
+            } else {
+                setResults(prev => prev.map(r => r.id === regenerateId ? errorUpdater(r) : r));
+            }
         }
-    };
-    
-    const handleRegenerate = async (id: number) => {
-        if (!logoFile) return;
-        const anyLoading = results.some(r => r.status === 'loading');
-        if (anyLoading) return;
+    }, [logoFile, brandContext, results]);
 
-        setIsGenerating(true);
-        setResults(prev => prev.map(r => r.id === id ? { ...r, status: 'loading', error: undefined } : r));
-
-        try {
-            const base64Logo = await fileToBase64(logoFile);
-            const mimeType = logoFile.type;
-            const data = await generateMockup({ base64Logo, mimeType, brandContext });
-            setResults(prev => prev.map(r => r.id === id ? { ...r, status: 'success', imageUrl: `data:${data.mimeType};base64,${data.base64Image}` } : r));
-        } catch (e: any) {
-             setResults(prev => prev.map(r => r.id === id ? { ...r, status: 'error', error: e.message } : r));
-        } finally {
-            setIsGenerating(false);
-        }
-    };
-
-
-    return (
-        <>
-            <div className="control-panel">
-                 <div className="control-section">
-                    <label className="control-label">1. Sube tu Logo <span>(PNG con transparencia funciona mejor)</span></label>
-                    <div className="file-input-wrapper">
-                        <p>{logoFile ? logoFile.name : 'Haz clic o arrastra tu archivo aquí'}</p>
-                        <input type="file" accept="image/*" onChange={(e) => setLogoFile(e.target.files ? e.target.files[0] : null)} />
-                    </div>
-                 </div>
-                 <div className="control-section">
-                    <label className="control-label">2. Contexto de la Marca <span>(Opcional)</span></label>
-                    <textarea value={brandContext} onChange={(e) => setBrandContext(e.target.value)} rows={2} placeholder="Ej: una marca de café artesanal y ecológica"></textarea>
-                 </div>
-                 <button className="generate-button" onClick={handleGenerate} disabled={!logoFile || isGenerating}>
-                    {isGenerating ? 'Generando...' : 'Generar 10 Mockups'}
-                 </button>
-            </div>
-            <div className="results-grid">
-                {(results.length > 0 ? results : Array(10).fill({ status: 'idle' })).map((item, index) => (
-                    <ImageCard key={index} item={item} onRegenerate={() => handleRegenerate(item.id)} />
-                ))}
-            </div>
-        </>
+    const inputs = (
+         <>
+             <div className="control-section">
+                <label className="control-label">1. Sube tu Logo <span>(PNG con transparencia funciona mejor)</span></label>
+                <div className="file-input-wrapper">
+                    <p>{logoFile ? logoFile.name : 'Haz clic o arrastra tu archivo aquí'}</p>
+                    <input type="file" accept="image/*" onChange={(e) => setLogoFile(e.target.files ? e.target.files[0] : null)} />
+                </div>
+             </div>
+             <div className="control-section">
+                <label className="control-label">2. Contexto de la Marca <span>(Opcional)</span></label>
+                <textarea value={brandContext} onChange={(e) => setBrandContext(e.target.value)} rows={2} placeholder="Ej: una marca de café artesanal y ecológica"></textarea>
+             </div>
+         </>
     );
+
+    return <GenericGenerator inputs={inputs} buttonText="Generar 10 Mockups" onGenerate={handleGenerate} results={results} CardComponent={ImageCard} />;
 };
 
 const LogoGenerator = () => {
     const [prompt, setPrompt] = useState('');
     const [results, setResults] = useState<ResultItem[]>([]);
-    const [isGenerating, setIsGenerating] = useState(false);
 
-    const handleGenerate = async () => {
-        if (!prompt || isGenerating) return;
-        setIsGenerating(true);
-        const initialResults: ResultItem[] = Array(10).fill(null).map((_, i) => ({ id: i, status: 'loading' }));
-        setResults(initialResults);
+    const handleGenerate = useCallback(async (regenerateId?: number) => {
+        if (!prompt) return;
+        const isMainGeneration = typeof regenerateId === 'undefined';
+        const isGenerating = results.some(r => r.status === 'loading');
+        if (isGenerating && isMainGeneration) return;
+
+        if (isMainGeneration) {
+            setResults(Array(10).fill(null).map((_, i) => ({ id: i, status: 'loading' })));
+        } else {
+            setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'loading' } : r));
+        }
 
         try {
-            const promises = initialResults.map(item =>
-                generateImageFromText(prompt)
-                    .then(data => ({ ...item, status: 'success' as Status, imageUrl: `data:${data.mimeType};base64,${data.base64Image}`, data: { prompt: data.prompt, style: data.style } }))
-                    .catch(e => ({ ...item, status: 'error' as Status, error: e.message }))
-            );
-
-            for (const promise of promises) {
-                const result = await promise;
-                setResults(prev => prev.map(r => r.id === result.id ? result : r));
+            if (isMainGeneration) {
+                const promises = Array(10).fill(null).map((_, i) => 
+                    generateImageFromText(prompt)
+                        .then(data => ({ id: i, status: 'success' as Status, imageUrl: `data:${data.mimeType};base64,${data.base64Image}`, data: { style: data.style } }))
+                        .catch(e => ({ id: i, status: 'error' as Status, error: e.message }))
+                );
+                 for (const promise of promises) {
+                    const result = await promise;
+                    setResults(prev => prev.map(r => r.id === result.id ? result : r));
+                }
+            } else {
+                const data = await generateImageFromText(prompt);
+                setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'success', imageUrl: `data:${data.mimeType};base64,${data.base64Image}`, data: { style: data.style } } : r));
             }
         } catch (e: any) {
-            setResults(initialResults.map(item => ({ ...item, status: 'error', error: e.message })));
-        } finally {
-            setIsGenerating(false);
+            const errorUpdater = (item: ResultItem) => ({ ...item, status: 'error' as Status, error: e.message });
+            if (isMainGeneration) {
+                setResults(prev => prev.map(errorUpdater));
+            } else {
+                setResults(prev => prev.map(r => r.id === regenerateId ? errorUpdater(r) : r));
+            }
         }
-    };
-    
-    const handleRegenerate = async (id: number) => {
-        if (!prompt) return;
-        const anyLoading = results.some(r => r.status === 'loading');
-        if (anyLoading) return;
-        setIsGenerating(true);
-        setResults(prev => prev.map(r => r.id === id ? { ...r, status: 'loading', error: undefined, data: r.data, imageUrl: undefined } : r));
+    }, [prompt, results]);
 
-        try {
-            const data = await generateImageFromText(prompt);
-            setResults(prev => prev.map(r => r.id === id ? { ...r, status: 'success', imageUrl: `data:${data.mimeType};base64,${data.base64Image}`, data: { prompt: data.prompt, style: data.style } } : r));
-        } catch (e: any) {
-             setResults(prev => prev.map(r => r.id === id ? { ...r, status: 'error', error: e.message } : r));
-        } finally {
-            setIsGenerating(false);
-        }
-    };
-
-    return (
-        <>
-            <div className="control-panel">
-                 <div className="control-section">
-                    <label className="control-label">Describe el logo que imaginas</label>
-                    <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={3} placeholder="Ej: Un zorro astuto leyendo un libro para una librería..."></textarea>
-                 </div>
-                 <button className="generate-button" onClick={handleGenerate} disabled={!prompt || isGenerating}>
-                    {isGenerating ? 'Generando...' : 'Generar 10 Logos'}
-                 </button>
-            </div>
-            <div className="results-grid">
-                {(results.length > 0 ? results : Array(10).fill({ status: 'idle' })).map((item, index) => (
-                    <ImageCard key={index} item={item} title={item.data?.style} onRegenerate={() => handleRegenerate(item.id)} />
-                ))}
-            </div>
-        </>
+    const inputs = (
+         <div className="control-section">
+            <label className="control-label">Describe el logo que imaginas</label>
+            <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={3} placeholder="Ej: Un zorro astuto leyendo un libro para una librería..."></textarea>
+         </div>
     );
+    
+    return <GenericGenerator inputs={inputs} buttonText="Generar 10 Logos" onGenerate={handleGenerate} results={results} CardComponent={({item, onRegenerate}) => <ImageCard item={item} title={item.data?.style} onRegenerate={onRegenerate} />} />;
 };
 
 const BrandingAssistant = () => {
     const [prompt, setPrompt] = useState('');
     const [results, setResults] = useState<ResultItem[]>([]);
-    const [isGenerating, setIsGenerating] = useState(false);
 
     const handleGenerate = useCallback(async (regenerateId?: number) => {
         if (!prompt) return;
-        
         const isMainGeneration = typeof regenerateId === 'undefined';
-        if(isGenerating && isMainGeneration) return;
+        const isGenerating = results.some(r => r.status === 'loading');
+        if (isGenerating && isMainGeneration) return;
 
-        setIsGenerating(true);
-        if (isMainGeneration) {
-            const initialResults: ResultItem[] = Array(10).fill(null).map((_, i) => ({ id: i, status: 'loading' }));
-            setResults(initialResults);
-        } else {
-            setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'loading', error: undefined } : r));
-        }
+        if (isMainGeneration) setResults(Array(10).fill(null).map((_, i) => ({ id: i, status: 'loading' })));
+        else setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'loading' } : r));
 
         try {
-            const brandingData = await generateBranding(prompt, isMainGeneration ? 10 : 1);
-            if (isMainGeneration) {
-                const newResults = brandingData.map((data, i) => ({ id: i, status: 'success' as Status, data }));
-                setResults(newResults);
-            } else {
-                setResults(prev => prev.map(r => r.id === regenerateId ? { id: r.id, status: 'success', data: brandingData[0] } : r));
-            }
+            const data = await generateBranding(prompt, isMainGeneration ? 10 : 1);
+            if (isMainGeneration) setResults(data.map((item, i) => ({ id: i, status: 'success', data: item })));
+            else setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'success', data: data[0] } : r));
         } catch (e: any) {
-            if (isMainGeneration) {
-                 setResults(results.map(item => ({ ...item, status: 'error', error: e.message })));
-            } else {
-                 setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'error', error: e.message } : r));
-            }
-        } finally {
-            setIsGenerating(false);
+            const errorUpdater = (item: ResultItem) => ({ ...item, status: 'error' as Status, error: e.message });
+            if (isMainGeneration) setResults(prev => prev.map(errorUpdater));
+            else setResults(prev => prev.map(r => r.id === regenerateId ? errorUpdater(r) : r));
         }
-    }, [prompt, isGenerating, results]);
-
-
-    return (
-        <>
-            <div className="control-panel">
-                 <div className="control-section">
-                    <label className="control-label">Describe la esencia de la marca</label>
-                    <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={3} placeholder="Ej: Una marca de cuidado de la piel, vegana y natural"></textarea>
-                 </div>
-                 <button className="generate-button" onClick={() => handleGenerate()} disabled={!prompt || isGenerating}>
-                    {isGenerating ? 'Generando...' : 'Generar 10 Ideas'}
-                 </button>
-            </div>
-            <div className="results-grid">
-                {(results.length > 0 ? results : Array(10).fill({ status: 'idle' })).map((item, index) => (
-                    <BrandingCard key={index} item={item} onRegenerate={() => handleGenerate(item.id)} />
-                ))}
-            </div>
-        </>
+    }, [prompt, results]);
+    
+    const inputs = (
+        <div className="control-section">
+            <label className="control-label">Describe la esencia de la marca</label>
+            <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={3} placeholder="Ej: Una marca de cuidado de la piel, vegana y natural"></textarea>
+        </div>
     );
+    
+    return <GenericGenerator inputs={inputs} buttonText="Generar 10 Ideas" onGenerate={handleGenerate} results={results} CardComponent={BrandingCard} />;
 };
 
 const SocialPostGenerator = () => {
     const [prompt, setPrompt] = useState('');
     const [results, setResults] = useState<ResultItem[]>([]);
-    const [isGenerating, setIsGenerating] = useState(false);
 
-    const handleGenerate = async () => {
-        if (!prompt || isGenerating) return;
-        setIsGenerating(true);
-        let initialResults: ResultItem[] = Array(10).fill(null).map((_, i) => ({ id: i, status: 'loading' }));
-        setResults(initialResults);
-
-        try {
-            // Step 1: Get post ideas (text + image prompts)
-            const postIdeas = await generateSocialPostIdeas(prompt);
-            initialResults = postIdeas.map((idea, i) => ({ id: i, status: 'loading', data: idea }));
-            setResults(initialResults);
-
-            // Step 2: Generate images for each idea
-            const imagePromises = initialResults.map(item =>
-                generateImageFromText(item.data.imagePrompt, true)
-                    .then(imgData => ({ ...item, status: 'success' as Status, imageUrl: `data:${imgData.mimeType};base64,${imgData.base64Image}` }))
-                    .catch(e => ({ ...item, status: 'error' as Status, error: e.message }))
-            );
-            
-            for (const promise of imagePromises) {
-                const result = await promise;
-                setResults(prev => prev.map(r => r.id === result.id ? result : r));
-            }
-
-        } catch (e: any) {
-            setResults(initialResults.map(item => ({ ...item, status: 'error', error: e.message })));
-        } finally {
-            setIsGenerating(false);
-        }
-    };
-
-    const handleRegenerate = async (id: number) => {
-        const itemToRegen = results.find(r => r.id === id);
-        if (!itemToRegen?.data?.imagePrompt) return;
-        const anyLoading = results.some(r => r.status === 'loading');
-        if (anyLoading) return;
+    const handleGenerate = useCallback(async (regenerateId?: number) => {
+        const isMainGeneration = typeof regenerateId === 'undefined';
+        const isGenerating = results.some(r => r.status === 'loading');
         
-        setIsGenerating(true);
-        setResults(prev => prev.map(r => r.id === id ? { ...r, status: 'loading', imageUrl: undefined, error: undefined } : r));
+        if (isMainGeneration) {
+            if (!prompt || isGenerating) return;
+            const initialResults: ResultItem[] = Array(10).fill(null).map((_, i) => ({ id: i, status: 'loading' }));
+            setResults(initialResults);
+            try {
+                const postIdeas = await generateSocialPostIdeas(prompt);
+                const resultsWithData = postIdeas.map((idea, i) => ({ id: i, status: 'loading', data: idea }));
+                setResults(resultsWithData);
 
-        try {
-            const imgData = await generateImageFromText(itemToRegen.data.imagePrompt, true);
-            setResults(prev => prev.map(r => r.id === id ? { ...r, status: 'success', imageUrl: `data:${imgData.mimeType};base64,${imgData.base64Image}` } : r));
-        } catch (e: any) {
-             setResults(prev => prev.map(r => r.id === id ? { ...r, status: 'error', error: e.message } : r));
-        } finally {
-            setIsGenerating(false);
+                const imagePromises = resultsWithData.map(item =>
+                    generateImageFromText(item.data.imagePrompt, true)
+                        .then(imgData => ({ ...item, status: 'success' as Status, imageUrl: `data:${imgData.mimeType};base64,${imgData.base64Image}` }))
+                        .catch(e => ({ ...item, status: 'error' as Status, error: e.message }))
+                );
+                for (const promise of imagePromises) {
+                    const result = await promise;
+                    setResults(prev => prev.map(r => r.id === result.id ? result : r));
+                }
+            } catch (e: any) {
+                setResults(prev => prev.map(item => ({ ...item, status: 'error', error: e.message })));
+            }
+        } else { // Regenerate
+            const itemToRegen = results.find(r => r.id === regenerateId);
+            if (!itemToRegen?.data?.imagePrompt) return;
+            if (isGenerating) return;
+
+            setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'loading', imageUrl: undefined, error: undefined } : r));
+            try {
+                const imgData = await generateImageFromText(itemToRegen.data.imagePrompt, true);
+                setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'success', imageUrl: `data:${imgData.mimeType};base64,${imgData.base64Image}` } : r));
+            } catch (e: any) {
+                setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'error', error: e.message } : r));
+            }
         }
-    };
+    }, [prompt, results]);
     
-    return (
-        <>
-            <div className="control-panel">
-                 <div className="control-section">
-                    <label className="control-label">Describe el objetivo de tu post</label>
-                    <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={3} placeholder="Ej: Promocionar un descuento del 20% en nuestro café de origen colombiano"></textarea>
-                 </div>
-                 <button className="generate-button" onClick={handleGenerate} disabled={!prompt || isGenerating}>
-                    {isGenerating ? 'Generando...' : 'Generar 10 Posts'}
-                 </button>
-            </div>
-            <div className="results-grid">
-                {(results.length > 0 ? results : Array(10).fill({ status: 'idle' })).map((item, index) => (
-                    <SocialPostCard key={index} item={item} onRegenerate={() => handleRegenerate(item.id)} />
-                ))}
-            </div>
-        </>
+    const inputs = (
+         <div className="control-section">
+            <label className="control-label">Describe el objetivo de tu post</label>
+            <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={3} placeholder="Ej: Promocionar un descuento del 20% en nuestro café de origen colombiano"></textarea>
+         </div>
     );
+    
+    return <GenericGenerator inputs={inputs} buttonText="Generar 10 Posts" onGenerate={handleGenerate} results={results} CardComponent={SocialPostCard} />;
 };
 
 const CampaignIdeaGenerator = () => {
@@ -588,128 +747,96 @@ const CampaignIdeaGenerator = () => {
     const [objective, setObjective] = useState('');
     const [audience, setAudience] = useState('');
     const [results, setResults] = useState<ResultItem[]>([]);
-    const [isGenerating, setIsGenerating] = useState(false);
 
     const handleGenerate = useCallback(async (regenerateId?: number) => {
         const fullPrompt = `Producto: ${product}\nObjetivo: ${objective}\nPúblico: ${audience}`;
         if (!product || !objective || !audience) return;
 
         const isMainGeneration = typeof regenerateId === 'undefined';
+        const isGenerating = results.some(r => r.status === 'loading');
         if (isGenerating && isMainGeneration) return;
 
-        setIsGenerating(true);
-        if (isMainGeneration) {
-            const initialResults: ResultItem[] = Array(10).fill(null).map((_, i) => ({ id: i, status: 'loading' }));
-            setResults(initialResults);
-        } else {
-            setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'loading', error: undefined } : r));
-        }
+        if (isMainGeneration) setResults(Array(10).fill(null).map((_, i) => ({ id: i, status: 'loading' })));
+        else setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'loading' } : r));
 
         try {
-            const campaignData = await generateCampaignIdeas(fullPrompt, isMainGeneration ? 10 : 1);
-            if (isMainGeneration) {
-                setResults(campaignData.map((data, i) => ({ id: i, status: 'success', data })));
-            } else {
-                setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'success', data: campaignData[0] } : r));
-            }
+            const data = await generateCampaignIdeas(fullPrompt, isMainGeneration ? 10 : 1);
+            if (isMainGeneration) setResults(data.map((item, i) => ({ id: i, status: 'success', data: item })));
+            else setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'success', data: data[0] } : r));
         } catch (e: any) {
-            if (isMainGeneration) {
-                setResults(results.map(item => ({...item, status: 'error', error: e.message })));
-            } else {
-                 setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'error', error: e.message } : r));
-            }
-        } finally {
-            setIsGenerating(false);
+            const errorUpdater = (item: ResultItem) => ({ ...item, status: 'error' as Status, error: e.message });
+            if (isMainGeneration) setResults(prev => prev.map(errorUpdater));
+            else setResults(prev => prev.map(r => r.id === regenerateId ? errorUpdater(r) : r));
         }
-    }, [product, objective, audience, isGenerating, results]);
+    }, [product, objective, audience, results]);
 
-
-    return (
+    const inputs = (
         <>
-            <div className="control-panel">
-                 <div className="control-section">
-                    <label className="control-label">Producto / Servicio</label>
-                    <input type="text" value={product} onChange={(e) => setProduct(e.target.value)} placeholder="Ej: App de meditación" />
-                 </div>
-                  <div className="control-section">
-                    <label className="control-label">Objetivo Principal</label>
-                    <input type="text" value={objective} onChange={(e) => setObjective(e.target.value)} placeholder="Ej: Conseguir 10,000 nuevos usuarios" />
-                 </div>
-                  <div className="control-section">
-                    <label className="control-label">Público Objetivo</label>
-                    <input type="text" value={audience} onChange={(e) => setAudience(e.target.value)} placeholder="Ej: Jóvenes profesionales con estrés" />
-                 </div>
-                 <button className="generate-button" onClick={() => handleGenerate()} disabled={!product || !objective || !audience || isGenerating}>
-                    {isGenerating ? 'Generando...' : 'Generar 10 Ideas'}
-                 </button>
+            <div className="control-section">
+                <label className="control-label">Producto / Servicio</label>
+                <input type="text" value={product} onChange={(e) => setProduct(e.target.value)} placeholder="Ej: App de meditación" />
             </div>
-            <div className="results-grid">
-                {(results.length > 0 ? results : Array(10).fill({ status: 'idle' })).map((item, index) => (
-                    <CampaignCard key={index} item={item} onRegenerate={() => handleGenerate(item.id)} />
-                ))}
+            <div className="control-section">
+                <label className="control-label">Objetivo Principal</label>
+                <input type="text" value={objective} onChange={(e) => setObjective(e.target.value)} placeholder="Ej: Conseguir 10,000 nuevos usuarios" />
+            </div>
+            <div className="control-section">
+                <label className="control-label">Público Objetivo</label>
+                <input type="text" value={audience} onChange={(e) => setAudience(e.target.value)} placeholder="Ej: Jóvenes profesionales con estrés" />
             </div>
         </>
     );
+
+    return <GenericGenerator inputs={inputs} buttonText="Generar 10 Ideas" onGenerate={handleGenerate} results={results} CardComponent={CampaignCard} />;
 };
 
 const ScriptGenerator = () => {
     const [prompt, setPrompt] = useState('');
     const [results, setResults] = useState<ResultItem[]>([]);
-    const [isGenerating, setIsGenerating] = useState(false);
 
     const handleGenerate = useCallback(async (regenerateId?: number) => {
         if (!prompt) return;
-
         const isMainGeneration = typeof regenerateId === 'undefined';
+        const isGenerating = results.some(r => r.status === 'loading');
         if (isGenerating && isMainGeneration) return;
 
-        setIsGenerating(true);
-        if (isMainGeneration) {
-            const initialResults: ResultItem[] = Array(10).fill(null).map((_, i) => ({ id: i, status: 'loading' }));
-            setResults(initialResults);
-        } else {
-            setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'loading', error: undefined } : r));
-        }
+        if (isMainGeneration) setResults(Array(10).fill(null).map((_, i) => ({ id: i, status: 'loading' })));
+        else setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'loading' } : r));
 
         try {
-            const scriptData = await generateScripts(prompt, isMainGeneration ? 10 : 1);
-            if (isMainGeneration) {
-                setResults(scriptData.map((data, i) => ({ id: i, status: 'success', data })));
-            } else {
-                setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'success', data: scriptData[0] } : r));
-            }
+            const data = await generateScripts(prompt, isMainGeneration ? 10 : 1);
+            if (isMainGeneration) setResults(data.map((item, i) => ({ id: i, status: 'success', data: item })));
+            else setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'success', data: data[0] } : r));
         } catch (e: any) {
-            if (isMainGeneration) {
-                setResults(results.map(item => ({...item, status: 'error', error: e.message })));
-            } else {
-                 setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'error', error: e.message } : r));
-            }
-        } finally {
-            setIsGenerating(false);
+            const errorUpdater = (item: ResultItem) => ({ ...item, status: 'error' as Status, error: e.message });
+            if (isMainGeneration) setResults(prev => prev.map(errorUpdater));
+            else setResults(prev => prev.map(r => r.id === regenerateId ? errorUpdater(r) : r));
         }
-    }, [prompt, isGenerating, results]);
+    }, [prompt, results]);
 
-    return (
-        <>
-            <div className="control-panel">
-                 <div className="control-section">
-                    <label className="control-label">Describe el tema o mensaje clave de tu video</label>
-                    <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={3} placeholder="Ej: Un tip rápido para mejorar la productividad por la mañana"></textarea>
-                 </div>
-                 <button className="generate-button" onClick={() => handleGenerate()} disabled={!prompt || isGenerating}>
-                    {isGenerating ? 'Generando...' : 'Generar 10 Guiones'}
-                 </button>
-            </div>
-            <div className="results-grid">
-                {(results.length > 0 ? results : Array(10).fill({ status: 'idle' })).map((item, index) => (
-                    <ScriptCard key={index} item={item} onRegenerate={() => handleGenerate(item.id)} />
-                ))}
-            </div>
-        </>
+    const inputs = (
+        <div className="control-section">
+            <label className="control-label">Describe el tema o mensaje clave de tu video</label>
+            <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={3} placeholder="Ej: Un tip rápido para mejorar la productividad por la mañana"></textarea>
+        </div>
     );
+
+    return <GenericGenerator inputs={inputs} buttonText="Generar 10 Guiones" onGenerate={handleGenerate} results={results} CardComponent={ScriptCard} />;
 };
 
-// Card Components
+// --- Card Components ---
+const CardBase = ({ item, children, onRegenerate }: { item: ResultItem, children: React.ReactNode, onRegenerate?: () => void }) => {
+    if (item.status === 'idle') return <div className="card card-placeholder">Esperando para generar...</div>;
+    if (item.status === 'loading') return <div className="card card-placeholder"><Loader /></div>;
+    if (item.status === 'error') return (
+        <div className="card card-error">
+            <p><strong>Error:</strong> {item.error}</p>
+            {onRegenerate && <button className="card-button" onClick={onRegenerate} title="Regenerar"><RegenerateIcon /></button>}
+        </div>
+    );
+    return <div className="card">{children}</div>;
+};
+
 const ImageCard = ({ item, title, onRegenerate }: { item: ResultItem, title?: string, onRegenerate: () => void }) => {
     const handleDownload = () => {
         if (!item.imageUrl) return;
@@ -722,12 +849,9 @@ const ImageCard = ({ item, title, onRegenerate }: { item: ResultItem, title?: st
     };
 
     return (
-        <div className="card">
-            {item.status === 'idle' && <div className="card-placeholder">Esperando para generar...</div>}
-            {item.status === 'loading' && <div className="card-placeholder"><Loader /></div>}
-            {item.status === 'error' && <div className="card-error"><p><strong>Error:</strong> {item.error}</p><button className="card-button" onClick={onRegenerate} title="Regenerar"><RegenerateIcon /></button></div>}
-            {item.status === 'success' && item.imageUrl && (
-                <>
+        <CardBase item={item} onRegenerate={onRegenerate}>
+            {item.imageUrl && (
+                 <>
                     <div className="card-image-wrapper">
                         <img src={item.imageUrl} alt={title || 'Generated content'} className="card-image" />
                          <div className="card-actions">
@@ -738,43 +862,37 @@ const ImageCard = ({ item, title, onRegenerate }: { item: ResultItem, title?: st
                     {title && <div className="card-content"><h3 className="card-title">{title}</h3></div>}
                 </>
             )}
-        </div>
+        </CardBase>
     );
 };
 
-const BrandingCard = ({ item, onRegenerate }: { item: ResultItem, onRegenerate: () => void }) => {
-    const { data } = item;
-    return (
-        <div className="card branding-card">
-            {item.status === 'idle' && <div className="card-placeholder">Esperando para generar...</div>}
-            {item.status === 'loading' && <div className="card-placeholder"><Loader /></div>}
-            {item.status === 'error' && <div className="card-error"><p><strong>Error:</strong> {item.error}</p><button className="card-button" onClick={onRegenerate} title="Regenerar"><RegenerateIcon /></button></div>}
-            {item.status === 'success' && data && (
-                 <>
-                    <div className="card-actions">
-                        <button className="card-button" title="Regenerar" onClick={onRegenerate}><RegenerateIcon /></button>
-                    </div>
-                    <div className="card-content">
-                        <div>
-                            <h4 className="card-section-title">Paleta de Colores</h4>
-                            <div className="palette">
-                                {data.colors?.map((color: string) => <div key={color} className="color-swatch" style={{ backgroundColor: color }}></div>)}
-                            </div>
-                        </div>
-                        <div className="branding-details">
-                           <h4 className="card-section-title">Tipografía</h4>
-                           <p><strong>{data.typography?.fontPairing}</strong></p>
-                        </div>
-                         <div className="branding-details">
-                           <h4 className="card-section-title">Tono de Voz</h4>
-                           <p>{data.toneOfVoice?.description}</p>
+const BrandingCard = ({ item, onRegenerate }: { item: ResultItem, onRegenerate: () => void }) => (
+    <CardBase item={item} onRegenerate={onRegenerate}>
+        {item.data && (
+            <>
+                <div className="card-actions">
+                    <button className="card-button" title="Regenerar" onClick={onRegenerate}><RegenerateIcon /></button>
+                </div>
+                <div className="card-content">
+                    <div>
+                        <h4 className="card-section-title">Paleta de Colores</h4>
+                        <div className="palette">
+                            {item.data.colors?.map((color: string) => <div key={color} className="color-swatch" style={{ backgroundColor: color }}></div>)}
                         </div>
                     </div>
-                </>
-            )}
-        </div>
-    );
-};
+                    <div className="branding-details">
+                       <h4 className="card-section-title">Tipografía</h4>
+                       <p><strong>{item.data.typography?.fontPairing}</strong></p>
+                    </div>
+                     <div className="branding-details">
+                       <h4 className="card-section-title">Tono de Voz</h4>
+                       <p>{item.data.toneOfVoice?.description}</p>
+                    </div>
+                </div>
+            </>
+        )}
+    </CardBase>
+);
 
 const SocialPostCard = ({ item, onRegenerate }: { item: ResultItem, onRegenerate: () => void }) => {
     const [copyStatus, setCopyStatus] = useState('Copiar Texto');
@@ -789,42 +907,43 @@ const SocialPostCard = ({ item, onRegenerate }: { item: ResultItem, onRegenerate
     
     return (
          <div className="card social-post-card">
-            {item.status === 'idle' && <div className="card-placeholder">Esperando para generar...</div>}
-            {item.status === 'loading' && <div className="card-placeholder"><Loader /></div>}
-            {item.status === 'error' && <div className="card-error"><p><strong>Error:</strong> {item.error}</p><button className="card-button" onClick={onRegenerate} title="Regenerar"><RegenerateIcon /></button></div>}
-            {item.status === 'success' && item.imageUrl && item.data && (
-                <>
-                    <ImageCard item={item} onRegenerate={onRegenerate} />
-                    <div className="card-content">
-                        <div className="card-copy-text">{item.data.copy}</div>
-                        <button className="copy-button" onClick={handleCopy}>{copyStatus}</button>
-                    </div>
-                </>
-            )}
+            <CardBase item={item} onRegenerate={onRegenerate}>
+                {item.imageUrl && item.data && (
+                    <>
+                        <ImageCard item={item} onRegenerate={onRegenerate} />
+                        <div className="card-content">
+                            <div className="card-copy-text">{item.data.copy}</div>
+                            <button className="copy-button" onClick={handleCopy}>{copyStatus}</button>
+                        </div>
+                    </>
+                )}
+            </CardBase>
         </div>
     );
 };
 
+
 const CampaignCard = ({ item, onRegenerate }: { item: ResultItem, onRegenerate: () => void }) => {
+     const [copyStatus, setCopyStatus] = useState('Copiar Concepto');
      const handleCopy = () => {
         if (!item.data) return;
         const textToCopy = `Concepto: ${item.data.concept}\n\nResumen: ${item.data.summary}\n\nAcciones Clave:\n- ${item.data.keyActions.join('\n- ')}`;
-        navigator.clipboard.writeText(textToCopy);
+        navigator.clipboard.writeText(textToCopy).then(() => {
+            setCopyStatus('¡Copiado!');
+            setTimeout(() => setCopyStatus('Copiar Concepto'), 2000);
+        });
     };
 
     return (
-        <div className="card campaign-card">
-            {item.status === 'idle' && <div className="card-placeholder">Esperando para generar...</div>}
-            {item.status === 'loading' && <div className="card-placeholder"><Loader /></div>}
-            {item.status === 'error' && <div className="card-error"><p><strong>Error:</strong> {item.error}</p><button className="card-button" onClick={onRegenerate} title="Regenerar"><RegenerateIcon /></button></div>}
-            {item.status === 'success' && item.data && (
-                 <>
+        <CardBase item={item} onRegenerate={onRegenerate}>
+            {item.data && (
+                <>
                     <div className="card-actions">
                          <button className="card-button" title="Copiar Concepto" onClick={handleCopy}><CopyIcon /></button>
                          <button className="card-button" title="Regenerar" onClick={onRegenerate}><RegenerateIcon /></button>
                     </div>
-                    <div className="card-content">
-                       <h3 className="card-title" style={{textTransform: 'none'}}>{item.data.concept}</h3>
+                    <div className="card-content" style={{gap: '1rem'}}>
+                       <h3 className="card-title" style={{textTransform: 'none', fontSize: '1.1rem', color: 'var(--text-color)'}}>{item.data.concept}</h3>
                        <div>
                            <h4 className="card-section-title">Resumen</h4>
                            <p className="card-text-block">{item.data.summary}</p>
@@ -838,30 +957,31 @@ const CampaignCard = ({ item, onRegenerate }: { item: ResultItem, onRegenerate: 
                     </div>
                 </>
             )}
-        </div>
+        </CardBase>
     );
 };
 
 const ScriptCard = ({ item, onRegenerate }: { item: ResultItem, onRegenerate: () => void }) => {
+    const [copyStatus, setCopyStatus] = useState('Copiar Guion');
     const handleCopy = () => {
         if (!item.data) return;
         const textToCopy = `Concepto: ${item.data.concept}\n\nGuion:\n${item.data.script}`;
-        navigator.clipboard.writeText(textToCopy);
+        navigator.clipboard.writeText(textToCopy).then(() => {
+            setCopyStatus('¡Copiado!');
+            setTimeout(() => setCopyStatus('Copiar Guion'), 2000);
+        });
     };
 
     return (
-        <div className="card script-card">
-            {item.status === 'idle' && <div className="card-placeholder">Esperando para generar...</div>}
-            {item.status === 'loading' && <div className="card-placeholder"><Loader /></div>}
-            {item.status === 'error' && <div className="card-error"><p><strong>Error:</strong> {item.error}</p><button className="card-button" onClick={onRegenerate} title="Regenerar"><RegenerateIcon /></button></div>}
-            {item.status === 'success' && item.data && (
-                 <>
+        <CardBase item={item} onRegenerate={onRegenerate}>
+            {item.data && (
+                <>
                     <div className="card-actions">
                          <button className="card-button" title="Copiar Guion" onClick={handleCopy}><CopyIcon /></button>
                          <button className="card-button" title="Regenerar" onClick={onRegenerate}><RegenerateIcon /></button>
                     </div>
-                    <div className="card-content">
-                       <h3 className="card-title" style={{textTransform: 'none'}}>{item.data.concept}</h3>
+                    <div className="card-content" style={{gap: '1rem'}}>
+                       <h3 className="card-title" style={{textTransform: 'none', fontSize: '1.1rem', color: 'var(--text-color)'}}>{item.data.concept}</h3>
                        <div>
                            <h4 className="card-section-title">Guion</h4>
                            <p className="card-text-block">{item.data.script}</p>
@@ -869,8 +989,107 @@ const ScriptCard = ({ item, onRegenerate }: { item: ResultItem, onRegenerate: ()
                     </div>
                 </>
             )}
-        </div>
+        </CardBase>
     );
 };
+
+const CopywritingCard = ({ item, onRegenerate }: { item: ResultItem, onRegenerate: () => void }) => {
+    const [copyStatus, setCopyStatus] = useState('Copiar Texto');
+    const handleCopy = () => {
+        if (!item.data) return;
+        navigator.clipboard.writeText(item.data.copy).then(() => {
+            setCopyStatus('¡Copiado!');
+            setTimeout(() => setCopyStatus('Copiar Texto'), 2000);
+        });
+    };
+    
+    return (
+        <CardBase item={item} onRegenerate={onRegenerate}>
+            {item.data && (
+                <div className="card-content">
+                    <p className="card-text-block" style={{maxHeight: '250px'}}>{item.data.copy}</p>
+                    <button className="copy-button" onClick={handleCopy}>{copyStatus}</button>
+                </div>
+            )}
+        </CardBase>
+    );
+};
+
+const PersonaCard = ({ item, onRegenerate }: { item: ResultItem, onRegenerate: () => void }) => (
+    <CardBase item={item} onRegenerate={onRegenerate}>
+        {item.data && (
+            <>
+                <div className="card-actions">
+                    <button className="card-button" title="Regenerar" onClick={onRegenerate}><RegenerateIcon /></button>
+                </div>
+                <div className="card-content persona-card">
+                    <div className="persona-header">
+                        <h3 className="persona-name">{item.data.name}, {item.data.age}</h3>
+                        <p className="card-title">{item.data.occupation}</p>
+                    </div>
+                    <p className="card-text-block" style={{fontStyle: 'italic', maxHeight: '80px'}}>{item.data.bio}</p>
+                    <div>
+                        <h4 className="card-section-title">Metas</h4>
+                        <p className="card-text-block" style={{maxHeight: '60px'}}>{item.data.goals}</p>
+                    </div>
+                    <div>
+                        <h4 className="card-section-title">Puntos de Dolor</h4>
+                        <p className="card-text-block" style={{maxHeight: '60px'}}>{item.data.painPoints}</p>
+                    </div>
+                </div>
+            </>
+        )}
+    </CardBase>
+);
+
+const SeoCard = ({ item, onRegenerate }: { item: ResultItem, onRegenerate: () => void }) => {
+    const getTag = (type: string) => {
+        if (type === 'title') return <span className="card-tag tag-title">Título de Blog</span>;
+        if (type === 'faq') return <span className="card-tag tag-faq">Pregunta Frecuente</span>;
+        if (type === 'meta') return <span className="card-tag tag-meta">Meta Descripción</span>;
+        return null;
+    };
+    
+    return (
+        <CardBase item={item} onRegenerate={onRegenerate}>
+            {item.data && (
+                 <>
+                    <div className="card-actions">
+                        <button className="card-button" title="Regenerar" onClick={onRegenerate}><RegenerateIcon /></button>
+                    </div>
+                    <div className="card-content seo-card">
+                        {getTag(item.data.type)}
+                        <p className="card-text-block" style={{maxHeight: '200px'}}>{item.data.content}</p>
+                    </div>
+                </>
+            )}
+        </CardBase>
+    );
+};
+
+const NameSloganCard = ({ item, onRegenerate }: { item: ResultItem, onRegenerate: () => void }) => {
+     const getTag = (type: string) => {
+        if (type === 'name') return <span className="card-tag tag-name">Nombre</span>;
+        if (type === 'slogan') return <span className="card-tag tag-slogan">Slogan</span>;
+        return null;
+    };
+    return (
+        <CardBase item={item} onRegenerate={onRegenerate}>
+            {item.data && (
+                 <>
+                    <div className="card-actions">
+                        <button className="card-button" title="Regenerar" onClick={onRegenerate}><RegenerateIcon /></button>
+                    </div>
+                    <div className="card-content name-slogan-card">
+                        {getTag(item.data.type)}
+                        <h3 style={{fontSize: '1.2rem', color: 'var(--text-color)'}}>{item.data.suggestion}</h3>
+                        <p className="card-text-block" style={{maxHeight: '150px'}}>{item.data.justification}</p>
+                    </div>
+                </>
+            )}
+        </CardBase>
+    );
+};
+
 
 export default App;

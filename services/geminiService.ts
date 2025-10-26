@@ -15,7 +15,13 @@ const logoStyles = [
 const handleError = (error: unknown, context: string): never => {
     console.error(`Error in ${context}:`, error);
     if (error instanceof Error) {
-        throw new Error(`[${context}] ${error.message}`);
+        // Attempt to parse Gemini-specific error details
+        const geminiErrorPrefix = '[GoogleGenerativeAI Error]: ';
+        if (error.message.startsWith(geminiErrorPrefix)) {
+            const details = error.message.substring(geminiErrorPrefix.length);
+            throw new Error(details);
+        }
+        throw new Error(`${error.message}`);
     }
     throw new Error(`An unknown error occurred in ${context}.`);
 };
@@ -88,7 +94,7 @@ export const generateMockup = async (
     try {
         const ai = getAiClient();
         const randomPrompt = allPrompts[Math.floor(Math.random() * allPrompts.length)];
-        const fullPrompt = brandContext ? `${brandContext}. ${randomPrompt}` : randomPrompt;
+        const fullPrompt = brandContext ? `For a brand that is ${brandContext}, create a mockup of this logo on a ${randomPrompt}` : `Create a mockup of this logo on a ${randomPrompt}`;
 
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash-image',
@@ -119,7 +125,7 @@ export const generateImageFromText = async (prompt: string, isForPost = false) =
     try {
         const ai = getAiClient();
         const style = isForPost ? '' : logoStyles[Math.floor(Math.random() * logoStyles.length)];
-        const fullPrompt = isForPost ? prompt : `${prompt}, ${style} logo`;
+        const fullPrompt = isForPost ? prompt : `A logo for ${prompt}, ${style}`;
 
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash-image',
@@ -143,7 +149,6 @@ export const generateImageFromText = async (prompt: string, isForPost = false) =
     }
 };
 
-
 export const generateBranding = async (prompt: string, count: number) => {
     try {
         const ai = getAiClient();
@@ -160,7 +165,7 @@ export const generateBranding = async (prompt: string, count: number) => {
                             colors: { type: Type.ARRAY, items: { type: Type.STRING } },
                             typography: { type: Type.OBJECT, properties: { fontPairing: { type: Type.STRING } } },
                             toneOfVoice: { type: Type.OBJECT, properties: { description: { type: Type.STRING } } },
-                        },
+                        }, required: ['colors', 'typography', 'toneOfVoice']
                     },
                 },
             },
@@ -170,7 +175,6 @@ export const generateBranding = async (prompt: string, count: number) => {
         handleError(error, 'generateBranding');
     }
 };
-
 
 export const generateSocialPostIdeas = async (prompt: string) => {
     try {
@@ -187,7 +191,7 @@ export const generateSocialPostIdeas = async (prompt: string) => {
                         properties: {
                             copy: { type: Type.STRING },
                             imagePrompt: { type: Type.STRING },
-                        },
+                        }, required: ['copy', 'imagePrompt']
                     },
                 },
             },
@@ -197,7 +201,6 @@ export const generateSocialPostIdeas = async (prompt: string) => {
         handleError(error, 'generateSocialPostIdeas');
     }
 };
-
 
 export const generateCampaignIdeas = async (prompt: string, count: number) => {
     try {
@@ -215,7 +218,7 @@ export const generateCampaignIdeas = async (prompt: string, count: number) => {
                             concept: { type: Type.STRING },
                             summary: { type: Type.STRING },
                             keyActions: { type: Type.ARRAY, items: { type: Type.STRING } },
-                        },
+                        }, required: ['concept', 'summary', 'keyActions']
                     },
                 },
             },
@@ -225,7 +228,6 @@ export const generateCampaignIdeas = async (prompt: string, count: number) => {
         handleError(error, 'generateCampaignIdeas');
     }
 };
-
 
 export const generateScripts = async (prompt: string, count: number) => {
     try {
@@ -242,7 +244,7 @@ export const generateScripts = async (prompt: string, count: number) => {
                         properties: {
                             concept: { type: Type.STRING },
                             script: { type: Type.STRING },
-                        },
+                        }, required: ['concept', 'script']
                     },
                 },
             },
@@ -250,5 +252,113 @@ export const generateScripts = async (prompt: string, count: number) => {
         return parseJsonResponse(response.text);
     } catch (error) {
         handleError(error, 'generateScripts');
+    }
+};
+
+export const generateCopywriting = async (prompt: string, count: number) => {
+    try {
+        const ai = getAiClient();
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: `Generate ${count} distinct pieces of advertising copy based on this brief:\n${prompt}`,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.ARRAY,
+                    items: {
+                        type: Type.OBJECT,
+                        properties: {
+                            copy: { type: Type.STRING, description: "The full ad copy text." },
+                        }, required: ['copy']
+                    },
+                },
+            },
+        });
+        return parseJsonResponse(response.text);
+    } catch (error) {
+        handleError(error, 'generateCopywriting');
+    }
+};
+
+export const generatePersonas = async (prompt: string, count: number) => {
+    try {
+        const ai = getAiClient();
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: `Generate ${count} detailed buyer personas for this product/client: "${prompt}".`,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.ARRAY,
+                    items: {
+                        type: Type.OBJECT,
+                        properties: {
+                            name: { type: Type.STRING },
+                            age: { type: Type.NUMBER },
+                            occupation: { type: Type.STRING },
+                            bio: { type: Type.STRING, description: "A short paragraph bringing the persona to life." },
+                            goals: { type: Type.STRING, description: "Primary goals related to the product." },
+                            painPoints: { type: Type.STRING, description: "Key challenges or frustrations." },
+                        }, required: ['name', 'age', 'occupation', 'bio', 'goals', 'painPoints']
+                    },
+                },
+            },
+        });
+        return parseJsonResponse(response.text);
+    } catch (error) {
+        handleError(error, 'generatePersonas');
+    }
+};
+
+export const generateSeoIdeas = async (prompt: string, count: number) => {
+    try {
+        const ai = getAiClient();
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: `Generate a mix of ${count} SEO content ideas for the keyword "${prompt}". Include blog post titles, frequently asked questions, and meta descriptions.`,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.ARRAY,
+                    items: {
+                        type: Type.OBJECT,
+                        properties: {
+                            type: { type: Type.STRING, description: "Can be 'title', 'faq', or 'meta'." },
+                            content: { type: Type.STRING },
+                        }, required: ['type', 'content']
+                    },
+                },
+            },
+        });
+        return parseJsonResponse(response.text);
+    } catch (error) {
+        handleError(error, 'generateSeoIdeas');
+    }
+};
+
+export const generateNamesAndSlogans = async (prompt: string, count: number) => {
+    try {
+        const ai = getAiClient();
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: `Generate a mix of ${count} brand names and slogans for a business with this essence: "${prompt}". For each, provide a justification.`,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.ARRAY,
+                    items: {
+                        type: Type.OBJECT,
+                        properties: {
+                            type: { type: Type.STRING, description: "Can be 'name' or 'slogan'." },
+                            suggestion: { type: Type.STRING },
+                            justification: { type: Type.STRING },
+                        }, required: ['type', 'suggestion', 'justification']
+                    },
+                },
+            },
+        });
+        return parseJsonResponse(response.text);
+    } catch (error) {
+        handleError(error, 'generateNamesAndSlogans');
     }
 };
