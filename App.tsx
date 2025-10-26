@@ -1,9 +1,19 @@
-import React, { useState, useCallback } from 'react';
-import { generateMockup, generateImageFromText, generateBranding, generateSocialPostIdeas, generateCampaignIdeas, generateScripts } from './services/geminiService';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { 
+    generateMockup, 
+    generateImageFromText, 
+    generateBranding, 
+    generateSocialPostIdeas, 
+    generateCampaignIdeas, 
+    generateScripts,
+    generateVideo,
+    getVideoOperationStatus,
+    analyzeImage,
+} from './services/geminiService';
 import { fileToBase64 } from './utils/fileUtils';
 
 // Types
-type Page = 'mockups' | 'logos' | 'branding' | 'social' | 'campaign' | 'scripts';
+type Page = 'mockups' | 'logos' | 'branding' | 'social' | 'campaign' | 'scripts' | 'video' | 'analyzer';
 type Status = 'idle' | 'loading' | 'success' | 'error';
 
 interface ResultItem {
@@ -11,7 +21,7 @@ interface ResultItem {
   status: Status;
   error?: string;
   imageUrl?: string;
-  data?: any; // For structured data like branding, posts, etc.
+  data?: any; 
 }
 
 // Helper Components
@@ -31,6 +41,8 @@ function App() {
     social: { title: 'Posts para Redes', description: 'Describe tu objetivo y la IA generará 10 pares de imagen y texto listos para publicar.' },
     campaign: { title: 'Ideas de Campaña', description: 'Detalla tu producto y objetivo para recibir 10 conceptos de campañas de marketing.' },
     scripts: { title: 'Guiones para Reels', description: 'Dale un tema a la IA y obtén 10 guiones estructurados para videos cortos virales.' },
+    video: { title: 'Generador de Videos', description: 'Crea videos cortos a partir de una imagen y una descripción usando IA generativa.' },
+    analyzer: { title: 'Analizador de Imágenes', description: 'Sube una imagen y recibe un análisis experto desde una perspectiva de marketing.' },
   };
 
   const renderPage = () => {
@@ -41,6 +53,8 @@ function App() {
       case 'social': return <SocialPostGenerator />;
       case 'campaign': return <CampaignIdeaGenerator />;
       case 'scripts': return <ScriptGenerator />;
+      case 'video': return <VideoGenerator />;
+      case 'analyzer': return <ImageAnalyzer />;
       default: return <MockupGenerator />;
     }
   };
@@ -71,7 +85,223 @@ function App() {
   );
 }
 
-// Tool Components
+// --- Tool Components ---
+const VideoGenerator = () => {
+    const [apiKeyReady, setApiKeyReady] = useState(false);
+    const [imageFile, setImageFile] = useState<File | null>(null);
+    const [prompt, setPrompt] = useState('');
+    const [aspectRatio, setAspectRatio] = useState<'16:9' | '9:16'>('16:9');
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [videoUrl, setVideoUrl] = useState<string | null>(null);
+    const [error, setError] = useState<string | null>(null);
+    const [progressMessage, setProgressMessage] = useState('');
+    const operationRef = useRef<any>(null);
+
+    const checkApiKey = async () => {
+        const hasKey = await (window as any).aistudio.hasSelectedApiKey();
+        setApiKeyReady(hasKey);
+    };
+
+    useEffect(() => {
+        checkApiKey();
+    }, []);
+
+    const handleSelectKey = async () => {
+        await (window as any).aistudio.openSelectKey();
+        await checkApiKey();
+        // Assume success after dialog closes to avoid race conditions
+        setApiKeyReady(true); 
+    };
+
+    const pollOperation = useCallback(async () => {
+        if (!operationRef.current) return;
+        
+        try {
+            const updatedOperation = await getVideoOperationStatus(operationRef.current);
+            operationRef.current = updatedOperation;
+
+            if (updatedOperation.done) {
+                const downloadLink = updatedOperation.response?.generatedVideos?.[0]?.video?.uri;
+                if (downloadLink) {
+                    const response = await fetch(`${downloadLink}&key=${process.env.API_KEY}`);
+                    const blob = await response.blob();
+                    const url = URL.createObjectURL(blob);
+                    setVideoUrl(url);
+                    setProgressMessage('¡Video generado con éxito!');
+                } else {
+                    throw new Error('La operación finalizó pero no se encontró el video.');
+                }
+                setIsGenerating(false);
+                operationRef.current = null;
+            } else {
+                // Keep polling
+                setTimeout(pollOperation, 10000);
+            }
+        } catch (e: any) {
+            setError(e.message || 'Error al verificar el estado del video.');
+            if (e.message.includes("Requested entity was not found")) {
+                setError("La clave de API no es válida. Por favor, selecciona una nueva.");
+                setApiKeyReady(false);
+            }
+            setIsGenerating(false);
+            operationRef.current = null;
+        }
+    }, []);
+
+    const handleGenerate = async () => {
+        if (!imageFile || !prompt || isGenerating) return;
+
+        setIsGenerating(true);
+        setError(null);
+        setVideoUrl(null);
+        setProgressMessage('Iniciando generación de video...');
+
+        try {
+            const base64Image = await fileToBase64(imageFile);
+            const mimeType = imageFile.type;
+            
+            setProgressMessage('Enviando solicitud a la IA... (Esto puede tardar unos minutos)');
+            const initialOperation = await generateVideo({
+                base64Image,
+                mimeType,
+                prompt,
+                aspectRatio
+            });
+
+            operationRef.current = initialOperation;
+            setProgressMessage('Procesando video... por favor espera.');
+            setTimeout(pollOperation, 10000); // Start polling
+
+        } catch (e: any) {
+            setError(e.message || 'Error al iniciar la generación de video.');
+            if (e.message.includes("API key not valid")) {
+                setError("La clave de API no es válida. Por favor, selecciona una nueva.");
+                setApiKeyReady(false);
+            }
+            setIsGenerating(false);
+        }
+    };
+
+    if (!apiKeyReady) {
+        return (
+            <div className="control-panel" style={{textAlign: 'center'}}>
+                <p style={{marginBottom: '1rem'}}>Esta herramienta requiere una clave de API de un proyecto con facturación habilitada. <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer">Más información</a>.</p>
+                <button className="generate-button" onClick={handleSelectKey}>Seleccionar Clave de API</button>
+                 {error && <p style={{ color: 'var(--error-color)', marginTop: '1rem' }}>{error}</p>}
+            </div>
+        );
+    }
+    
+    return (
+        <>
+            <div className="control-panel">
+                <div className="control-section">
+                    <label className="control-label">1. Sube una imagen de inicio</label>
+                    <div className="file-input-wrapper">
+                        <p>{imageFile ? imageFile.name : 'Haz clic o arrastra tu archivo aquí'}</p>
+                        <input type="file" accept="image/*" onChange={(e) => setImageFile(e.target.files ? e.target.files[0] : null)} />
+                    </div>
+                </div>
+                <div className="control-section">
+                    <label className="control-label">2. Describe qué debe pasar en el video</label>
+                    <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={3} placeholder="Ej: un dron vuela lentamente hacia adelante, revelando un paisaje montañoso al amanecer"></textarea>
+                </div>
+                <div className="control-section">
+                     <label className="control-label">3. Elige el formato del video</label>
+                     <div className="aspect-ratio-selector">
+                        <button className={`aspect-ratio-btn ${aspectRatio === '16:9' ? 'active' : ''}`} onClick={() => setAspectRatio('16:9')}>16:9 (Horizontal)</button>
+                        <button className={`aspect-ratio-btn ${aspectRatio === '9:16' ? 'active' : ''}`} onClick={() => setAspectRatio('9:16')}>9:16 (Vertical)</button>
+                     </div>
+                </div>
+                <button className="generate-button" onClick={handleGenerate} disabled={!imageFile || !prompt || isGenerating}>
+                    {isGenerating ? 'Generando...' : 'Generar Video'}
+                </button>
+            </div>
+            
+            {isGenerating && <div className="video-result-container" style={{textAlign: 'center'}}><Loader /><p>{progressMessage}</p></div>}
+            {error && <div className="video-result-container" style={{textAlign: 'center', color: 'var(--error-color)'}}><p><strong>Error:</strong> {error}</p></div>}
+            {videoUrl && (
+                <div className="video-result-container">
+                    <video className="video-player" src={videoUrl} controls autoPlay loop />
+                </div>
+            )}
+        </>
+    );
+};
+
+
+const ImageAnalyzer = () => {
+    const [imageFile, setImageFile] = useState<File | null>(null);
+    const [isLoading, setIsLoading] = useState(false);
+    const [analysis, setAnalysis] = useState<string | null>(null);
+    const [error, setError] = useState<string | null>(null);
+    const [imageUrl, setImageUrl] = useState<string | null>(null);
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            setImageFile(file);
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setImageUrl(reader.result as string);
+            };
+            reader.readAsDataURL(file);
+            setAnalysis(null);
+            setError(null);
+        }
+    };
+
+    const handleAnalyze = async () => {
+        if (!imageFile || isLoading) return;
+        setIsLoading(true);
+        setAnalysis(null);
+        setError(null);
+
+        try {
+            const base64Image = await fileToBase64(imageFile);
+            const mimeType = imageFile.type;
+            const result = await analyzeImage({ base64Image, mimeType });
+            setAnalysis(result);
+        } catch (e: any) {
+            setError(e.message || "Error al analizar la imagen.");
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    return (
+        <>
+            <div className="control-panel">
+                <div className="control-section">
+                    <label className="control-label">Sube una imagen para analizar</label>
+                    <div className="file-input-wrapper">
+                        <p>{imageFile ? imageFile.name : 'Haz clic o arrastra tu archivo aquí'}</p>
+                        <input type="file" accept="image/*" onChange={handleFileChange} />
+                    </div>
+                </div>
+                <button className="generate-button" onClick={handleAnalyze} disabled={!imageFile || isLoading}>
+                    {isLoading ? 'Analizando...' : 'Analizar Imagen'}
+                </button>
+            </div>
+            
+            {(isLoading || error || analysis || imageUrl) && (
+                <div className="analyzer-layout">
+                    {imageUrl && (
+                        <div className="analyzer-image-container">
+                             <img src={imageUrl} alt="Uploaded for analysis" />
+                        </div>
+                    )}
+                    <div className="analyzer-text-container">
+                        {isLoading && <div style={{display: 'flex', justifyContent: 'center'}}><Loader /></div>}
+                        {error && <p style={{color: 'var(--error-color)'}}><strong>Error:</strong> {error}</p>}
+                        {analysis && <p>{analysis}</p>}
+                    </div>
+                </div>
+            )}
+        </>
+    );
+};
+
 const MockupGenerator = () => {
     const [logoFile, setLogoFile] = useState<File | null>(null);
     const [brandContext, setBrandContext] = useState('');
@@ -105,9 +335,11 @@ const MockupGenerator = () => {
         }
     };
     
-    // In MockupGenerator
     const handleRegenerate = async (id: number) => {
-        if (!logoFile || isGenerating) return;
+        if (!logoFile) return;
+        const anyLoading = results.some(r => r.status === 'loading');
+        if (anyLoading) return;
+
         setIsGenerating(true);
         setResults(prev => prev.map(r => r.id === id ? { ...r, status: 'loading', error: undefined } : r));
 
@@ -119,13 +351,7 @@ const MockupGenerator = () => {
         } catch (e: any) {
              setResults(prev => prev.map(r => r.id === id ? { ...r, status: 'error', error: e.message } : r));
         } finally {
-            // Check if any other items are still loading before re-enabling the main button
-            setResults(prevResults => {
-                if (!prevResults.some(r => r.status === 'loading')) {
-                    setIsGenerating(false);
-                }
-                return prevResults;
-            });
+            setIsGenerating(false);
         }
     };
 
@@ -187,9 +413,11 @@ const LogoGenerator = () => {
     };
     
     const handleRegenerate = async (id: number) => {
-        if (!prompt || isGenerating) return;
+        if (!prompt) return;
+        const anyLoading = results.some(r => r.status === 'loading');
+        if (anyLoading) return;
         setIsGenerating(true);
-        setResults(prev => prev.map(r => r.id === id ? { ...r, status: 'loading', error: undefined } : r));
+        setResults(prev => prev.map(r => r.id === id ? { ...r, status: 'loading', error: undefined, data: r.data, imageUrl: undefined } : r));
 
         try {
             const data = await generateImageFromText(prompt);
@@ -197,12 +425,7 @@ const LogoGenerator = () => {
         } catch (e: any) {
              setResults(prev => prev.map(r => r.id === id ? { ...r, status: 'error', error: e.message } : r));
         } finally {
-            setResults(prevResults => {
-                if (!prevResults.some(r => r.status === 'loading')) {
-                    setIsGenerating(false);
-                }
-                return prevResults;
-            });
+            setIsGenerating(false);
         }
     };
 
@@ -323,7 +546,9 @@ const SocialPostGenerator = () => {
 
     const handleRegenerate = async (id: number) => {
         const itemToRegen = results.find(r => r.id === id);
-        if (!itemToRegen?.data?.imagePrompt || isGenerating) return;
+        if (!itemToRegen?.data?.imagePrompt) return;
+        const anyLoading = results.some(r => r.status === 'loading');
+        if (anyLoading) return;
         
         setIsGenerating(true);
         setResults(prev => prev.map(r => r.id === id ? { ...r, status: 'loading', imageUrl: undefined, error: undefined } : r));
@@ -334,12 +559,7 @@ const SocialPostGenerator = () => {
         } catch (e: any) {
              setResults(prev => prev.map(r => r.id === id ? { ...r, status: 'error', error: e.message } : r));
         } finally {
-            setResults(prevResults => {
-                if (!prevResults.some(r => r.status === 'loading')) {
-                    setIsGenerating(false);
-                }
-                return prevResults;
-            });
+            setIsGenerating(false);
         }
     };
     
@@ -431,7 +651,6 @@ const CampaignIdeaGenerator = () => {
         </>
     );
 };
-
 
 const ScriptGenerator = () => {
     const [prompt, setPrompt] = useState('');

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-g">
+  <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Suite Creativa con IA</title>
   <script type="importmap">
@@ -355,6 +355,69 @@
     .card-section-title { font-weight: 700; color: var(--accent-color); font-size: 0.9rem;}
     .card-text-block { font-size: 0.9rem; max-height: 150px; overflow-y: auto; white-space: pre-wrap; }
     .card-text-block ul { padding-left: 1rem; }
+
+    /* New styles for Video Generator */
+    .aspect-ratio-selector {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+    .aspect-ratio-btn {
+        flex: 1;
+        padding: 0.75rem;
+        border: 2px solid var(--border-color);
+        background-color: transparent;
+        color: var(--text-muted);
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .aspect-ratio-btn.active {
+        border-color: var(--accent-color);
+        background-color: rgba(0, 229, 255, 0.1);
+        color: var(--accent-color);
+    }
+    .video-result-container {
+        width: 100%;
+        max-width: 640px;
+        margin: 0 auto;
+        padding: 1rem;
+        background: var(--card-bg);
+        border-radius: 12px;
+        border: 1px solid var(--border-color);
+    }
+    .video-player {
+        width: 100%;
+        border-radius: 8px;
+    }
+    
+    /* New styles for Image Analyzer */
+    .analyzer-layout {
+        display: flex;
+        gap: 2rem;
+        width: 100%;
+    }
+    .analyzer-image-container {
+        flex: 1;
+        max-width: 50%;
+    }
+    .analyzer-image-container img {
+        width: 100%;
+        height: auto;
+        border-radius: 12px;
+        border: 1px solid var(--border-color);
+    }
+    .analyzer-text-container {
+        flex: 1;
+        background: var(--card-bg);
+        padding: 1.5rem;
+        border-radius: 12px;
+        border: 1px solid var(--border-color);
+        white-space: pre-wrap;
+        overflow-y: auto;
+        max-height: 60vh;
+    }
+
   </style>
 </head>
 <body>
