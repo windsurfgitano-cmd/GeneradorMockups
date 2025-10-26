@@ -1,4 +1,5 @@
 
+
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { 
     generateMockup, 
@@ -76,6 +77,7 @@ function App() {
     <div className="app-layout">
       <aside className="sidebar">
         <div className="sidebar-header">
+          <h2 className="sidebar-super-title">EL REY DE LAS PAGINAS</h2>
           <h1 className="sidebar-title">Suite Creativa</h1>
           <p className="sidebar-subtitle">Potenciada por IA</p>
         </div>
@@ -369,7 +371,7 @@ const VideoGenerator = () => {
                 setTimeout(pollOperation, 10000);
             }
         } catch (e: unknown) {
-            // Fix: Safely handle the caught exception by checking if it's an instance of Error before accessing its message property. This resolves the TypeScript error about 'unknown' type.
+            // Fix: Safely handle the caught exception by checking if it's an instance of Error before accessing its message property to avoid type errors.
             const message = e instanceof Error ? e.message : 'Error al verificar el estado del video.';
             setError(message);
             if (message.includes("Requested entity was not found")) {
