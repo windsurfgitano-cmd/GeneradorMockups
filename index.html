@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Generador de Mockups con IA</title>
+    <script type="importmap">
+      {
+        "imports": {
+          "react": "https://aistudiocdn.com/react@^19.2.0",
+          "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+          "react/": "https://aistudiocdn.com/react@^19.2.0/",
+          "@google/genai": "https://aistudiocdn.com/@google/genai@^1.27.0"
+        }
+      }
+    </script>
+    <style>
+      :root {
+        --background-color: #0d1117;
+        --text-color: #c9d1d9;
+        --primary-color: #22d3ee;
+        --secondary-color: #16a34a;
+        --glass-bg: rgba(30, 41, 59, 0.5);
+        --border-color: rgba(100, 116, 139, 0.4);
+        --card-bg: #161b22;
+        --shadow-color: rgba(34, 211, 238, 0.2);
+        --error-color: #f87171;
+        --error-bg: rgba(248, 113, 113, 0.1);
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+        background-color: var(--background-color);
+        color: var(--text-color);
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+
+      #root {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 2rem;
+      }
+
+      .app-header {
+        text-align: center;
+        margin-bottom: 3rem;
+      }
+
+      .app-header h1 {
+        font-size: 2.5rem;
+        font-weight: 700;
+        color: white;
+        margin-bottom: 0.5rem;
+      }
+
+      .app-header p {
+        font-size: 1.125rem;
+        max-width: 600px;
+        margin: 0 auto;
+      }
+
+      .main-content {
+        display: grid;
+        grid-template-columns: 350px 1fr;
+        gap: 2rem;
+        align-items: flex-start;
+      }
+
+      .controls-panel {
+        position: sticky;
+        top: 2rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+        padding: 2rem;
+        background: var(--glass-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 16px;
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+      }
+      
+      .control-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+      }
+
+      .control-group label {
+        font-weight: 600;
+        font-size: 1rem;
+      }
+
+      .file-input {
+        font-size: 0.9rem;
+      }
+
+      .file-input::file-selector-button {
+        font-weight: 600;
+        padding: 0.5rem 1rem;
+        border-radius: 8px;
+        border: 1px solid var(--primary-color);
+        background-color: transparent;
+        color: var(--primary-color);
+        cursor: pointer;
+        transition: all 0.2s ease-in-out;
+      }
+      
+      .file-input::file-selector-button:hover {
+        background-color: var(--shadow-color);
+      }
+
+      .logo-preview-container {
+        border: 2px dashed var(--border-color);
+        border-radius: 12px;
+        height: 150px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background-color: rgba(0,0,0,0.2);
+        overflow: hidden;
+      }
+
+      .logo-preview-container img {
+        max-width: 90%;
+        max-height: 90%;
+        object-fit: contain;
+      }
+      
+      .suggestions {
+        font-size: 0.875rem;
+        padding: 1rem;
+        background-color: rgba(34, 211, 238, 0.05);
+        border-radius: 8px;
+        border: 1px solid var(--border-color);
+      }
+      .suggestions h4 { margin-bottom: 0.5rem; color: var(--primary-color); }
+      .suggestions p { font-size: 0.8rem; line-height: 1.4; }
+
+
+      .generate-button {
+        padding: 0.75rem 1rem;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        background: linear-gradient(45deg, var(--primary-color), var(--secondary-color));
+        color: #0d1117;
+        border: none;
+        border-radius: 8px;
+        transition: all 0.2s ease-in-out;
+        box-shadow: 0 4px 15px 0 var(--shadow-color);
+      }
+
+      .generate-button:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px 0 var(--shadow-color);
+      }
+
+      .generate-button:disabled {
+        background: #304159;
+        color: #8b949e;
+        cursor: not-allowed;
+        box-shadow: none;
+      }
+
+      .results-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 1.5rem;
+      }
+      
+      .mockup-card {
+        background-color: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        overflow: hidden;
+        position: relative;
+        aspect-ratio: 4 / 3;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+      }
+      
+      .mockup-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.5);
+      }
+
+      .mockup-card img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .card-overlay {
+        position: absolute;
+        inset: 0;
+        background-color: rgba(0, 0, 0, 0.7);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        padding: 1rem;
+        text-align: center;
+      }
+
+      .card-placeholder {
+        color: #8b949e;
+        font-weight: 500;
+      }
+      
+      .card-loader {
+        border: 4px solid rgba(255, 255, 255, 0.2);
+        border-left-color: var(--primary-color);
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+      }
+      
+      .card-error {
+        color: var(--error-color);
+        font-size: 0.9rem;
+      }
+
+      .card-actions {
+        position: absolute;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.6);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 1rem;
+        opacity: 0;
+        transition: opacity 0.2s ease-in-out;
+      }
+      
+      .mockup-card:hover .card-actions {
+        opacity: 1;
+      }
+      
+      .action-button {
+        background: var(--glass-bg);
+        color: white;
+        border: 1px solid var(--border-color);
+        border-radius: 50%;
+        width: 50px;
+        height: 50px;
+        cursor: pointer;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        transition: background-color 0.2s ease, transform 0.2s ease;
+        backdrop-filter: blur(5px);
+      }
+      
+      .action-button:hover {
+        background-color: var(--primary-color);
+        color: var(--background-color);
+        transform: scale(1.1);
+      }
+
+      .global-error {
+        color: var(--error-color);
+        background-color: var(--error-bg);
+        border: 1px solid var(--error-color);
+        padding: 1rem;
+        border-radius: 8px;
+        margin-top: 1rem;
+        text-align: center;
+      }
+      
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+      
+      @media (max-width: 900px) {
+        .main-content {
+          grid-template-columns: 1fr;
+        }
+        .controls-panel {
+          position: static;
+        }
+      }
+
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
