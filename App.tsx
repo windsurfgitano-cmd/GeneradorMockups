@@ -1,344 +1,278 @@
-import React, { useState, useEffect } from 'react';
-import { generateMockup, generateLogo } from './services/geminiService';
+
+import React, { useState, useCallback } from 'react';
+import { generateLogo, generateMockup } from './services/geminiService';
 import { fileToBase64 } from './utils/fileUtils';
 
-// --- PROMPT DATABASE (English for better AI results) ---
-const MOCKUP_PROMPTS = [
-    // Corporativos y de Oficina
-    "Logo on a frosted glass wall of a modern office reception area.",
-    "Logo engraved on a premium metal business card on a dark wooden desk.",
-    "Logo on the screen of a laptop in a busy co-working space.",
-    "Logo printed on a folder during a professional business meeting.",
-    "Logo on a building's main entrance sign, made of brushed steel.",
-    "Logo on a coffee mug on a clean, minimalist desk setup.",
-    "Logo on the wall behind the reception desk in a bright, airy office.",
-    "Logo on a tote bag carried by a person walking in a financial district.",
-    "Logo on a polo shirt worn by a staff member at a corporate event.",
-    "Logo on a window decal of a high-rise office building.",
+type Page = 'mockups' | 'logos';
 
-    // Ropa y Accesorios
-    "Logo embroidered on the front of a black baseball cap.",
-    "Logo printed on the chest of a high-quality cotton t-shirt.",
-    "Logo on a woven label stitched onto the cuff of a beanie.",
-    "Logo embossed on a leather patch on a denim jacket.",
-    "Logo on a canvas tote bag hanging in a trendy boutique.",
-    "Logo as a small, subtle print on a pair of sneakers.",
-    "Logo on the buckle of a leather belt.",
-    "Logo on a fabric tag of a hoodie.",
-
-    // Productos y Embalajes
-    "Logo on the label of a craft beer bottle with condensation.",
-    "Logo on a paper coffee cup held by a person walking down a city street.",
-    "Logo on a luxury product box with a satin ribbon.",
-    "Logo printed on a brown paper bag from a gourmet deli.",
-    "Logo on the side of a sleek, modern cosmetic bottle.",
-    "Logo on a gourmet chocolate bar wrapper.",
-    "Logo on a wine bottle label, placed on a rustic wooden table.",
-
-    // Exteriores y Señalización
-    "Logo painted as a large mural on a brick wall in an urban alley.",
-    "Logo on a rustic wooden sign hanging outside a cafe.",
-    "Logo on a flag waving in front of a modern building.",
-    "Logo on a storefront window with reflections of the street.",
-    "Logo on the side of a corporate delivery van in motion.",
-    "Logo on a surfboard leaning against a beach hut.",
-    "Logo on a banner at an outdoor music festival.",
-
-    // Digital y Tecnología
-    "Logo on the loading screen of a mobile app on a smartphone.",
-    "Logo displayed on a large screen during a tech conference.",
-    "Logo on a tablet screen, being used in a coffee shop.",
-    "Logo as a watermark on a professional photograph.",
-];
-
-const LOGO_STYLES = [
-    "minimalist line art, monochrome",
-    "vintage, hand-drawn, with rustic textures",
-    "futuristic, neon, glowing, cyberpunk style",
-    "corporate, clean, geometric, blue and grey palette",
-    "watercolor, organic, soft edges, pastel colors",
-    "90s retro, bold, colorful, pop-art inspired",
-    "luxury, elegant, gold foil, serif font",
-    "mascot, cartoon character, playful and vibrant",
-    "abstract, geometric shapes, bold and modern",
-    "calligraphy, elegant script, ink-like",
-];
-
-
-// --- TYPES ---
-interface GenerationState {
-    id: number;
-    prompt: string;
-    style?: string; // Storing style explicitly for logos
-    status: 'idle' | 'loading' | 'success' | 'error';
-    imageUrl?: string;
-    error?: string;
+interface ImageState {
+  id: number;
+  src: string | null;
+  isLoading: boolean;
+  error: string | null;
+  prompt: string;
+  style?: string;
 }
 
+// --- MOCKUP PROMPTS (ENGLISH) ---
+const mockupPrompts: string[] = [
+    "Logo on a classic black t-shirt, worn by a person in a cafe.",
+    "Logo engraved on a rustic wooden plaque hanging on a brick wall.",
+    "Logo on a sleek, modern storefront window with city reflections.",
+    "Logo printed on a white ceramic coffee mug, held in two hands.",
+    "Logo embossed on a leather-bound journal cover.",
+    "Logo on the side of a corporate delivery van, matte finish, parked in a business district.",
+    "Logo on a large billboard in a bustling city square at dusk.",
+    "Logo on a premium shopping bag held by a stylish person.",
+    "Logo on the screen of a laptop in a modern office setting.",
+    "Logo as a watermark on a professional photograph.",
+    "Logo on a frosted glass office door.",
+    "Logo embroidered on a baseball cap.",
+    "Logo on a business card, close-up shot with textured paper.",
+    "Logo on a metal water bottle placed on a yoga mat.",
+    "Logo on a flag waving on a tall flagpole with a clear blue sky background.",
+];
+
+// --- LOGO STYLES (ENGLISH) ---
+const logoStyles: string[] = [
+    "minimalist logo, clean lines, geometric",
+    "vintage logo, hand-drawn, distressed texture",
+    "watercolor logo, soft edges, pastel colors",
+    "neon logo, glowing, vibrant, on a dark brick wall",
+    "3D logo, metallic, chrome finish",
+    "origami logo, folded paper style, geometric",
+    "gradient logo, smooth color transition, modern",
+    "flat icon logo, simple shapes, bold colors",
+    "line art logo, single continuous line, elegant",
+    "mascot logo, cartoon character, friendly",
+    "calligraphy logo, elegant script, flowing lines",
+    "abstract logo, organic shapes, conceptual",
+];
+
 // --- HELPER FUNCTIONS ---
-const shuffleAndPick = (arr: string[], num: number) => {
-    return [...arr].sort(() => 0.5 - Math.random()).slice(0, num);
+const getRandomItems = <T,>(arr: T[], num: number): T[] => {
+  const shuffled = [...arr].sort(() => 0.5 - Math.random());
+  return shuffled.slice(0, num);
 };
 
-// --- MOCKUP GENERATOR COMPONENT ---
-const MockupGenerator = () => {
+// --- COMPONENTS ---
+
+const MockupGenerator: React.FC = () => {
     const [logoFile, setLogoFile] = useState<File | null>(null);
     const [brandContext, setBrandContext] = useState('');
-    const [mockups, setMockups] = useState<GenerationState[]>([]);
-    const [isGenerating, setIsGenerating] = useState(false);
+    const [images, setImages] = useState<ImageState[]>([]);
+    const [isGeneratingAll, setIsGeneratingAll] = useState(false);
 
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files?.[0]) {
-            setLogoFile(e.target.files[0]);
-        }
-    };
+    const generateImage = useCallback(async (id: number, prompt: string) => {
+        if (!logoFile) return;
 
-    const generateSingleMockup = async (id: number, prompt: string, file: File, context: string) => {
-        setMockups(prev => prev.map(m => m.id === id ? { ...m, status: 'loading' } : m));
+        setImages(prev => prev.map(img => img.id === id ? { ...img, isLoading: true, error: null } : img));
+        
         try {
-            const base64 = await fileToBase64(file);
-            const fullPrompt = `${context ? `Context: ${context}. ` : ''}${prompt}`;
-            const result = await generateMockup(fullPrompt, { mimeType: file.type, data: base64 });
-
-            if (result.base64Image) {
-                 setMockups(prev => prev.map(m => m.id === id ? { ...m, status: 'success', imageUrl: `data:${result.mimeType};base64,${result.base64Image}` } : m));
-            } else {
-                throw new Error("Gemini did not return an image.");
-            }
-        } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : "Unknown error";
-            console.error(`Error for prompt "${prompt}":`, errorMessage);
-            setMockups(prev => prev.map(m => m.id === id ? { ...m, status: 'error', error: errorMessage } : m));
+            const base64Logo = await fileToBase64(logoFile);
+            const fullPrompt = brandContext ? `${brandContext}. ${prompt}` : prompt;
+            const result = await generateMockup(fullPrompt, {
+                mimeType: logoFile.type,
+                data: base64Logo,
+            });
+            setImages(prev => prev.map(img => img.id === id ? { ...img, src: `data:${result.mimeType};base64,${result.base64Image}`, isLoading: false } : img));
+        } catch (err) {
+            const errorMessage = err instanceof Error ? err.message : 'Error desconocido';
+            setImages(prev => prev.map(img => img.id === id ? { ...img, isLoading: false, error: errorMessage } : img));
         }
-    };
+    }, [logoFile, brandContext]);
     
     const handleGenerateAllClick = async () => {
-        if (!logoFile) return;
-        setIsGenerating(true);
-        const selectedPrompts = shuffleAndPick(MOCKUP_PROMPTS, 10);
-        const initialMockups = selectedPrompts.map((prompt, i) => ({ id: i, prompt, status: 'idle' as const }));
-        setMockups(initialMockups);
+        if (!logoFile) {
+            alert("Por favor, sube un logo primero.");
+            return;
+        }
+        setIsGeneratingAll(true);
+        const selectedPrompts = getRandomItems(mockupPrompts, 10);
+        const initialImages = selectedPrompts.map((prompt, i) => ({ id: i, src: null, isLoading: false, error: null, prompt }));
+        setImages(initialImages);
 
-        const generationPromises = initialMockups.map(mockup =>
-            generateSingleMockup(mockup.id, mockup.prompt, logoFile, brandContext)
-        );
-        
-        await Promise.all(generationPromises);
-        setIsGenerating(false);
+        await Promise.all(initialImages.map(img => generateImage(img.id, img.prompt)));
+        setIsGeneratingAll(false);
     };
 
     const handleRegenerateClick = (id: number, prompt: string) => {
-        if (!logoFile || isGenerating) return;
-        generateSingleMockup(id, prompt, logoFile, brandContext);
+        generateImage(id, prompt);
     };
-
-    const handleDownloadClick = (imageUrl?: string) => {
-        if (!imageUrl) return;
-        const link = document.createElement('a');
-        link.href = imageUrl;
-        link.download = `mockup-${Date.now()}.png`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    };
-
+    
     return (
         <>
+            <div className="page-header">
+                <h2>Generador de Mockups</h2>
+                <p>Visualiza tu marca en escenarios realistas con un solo clic.</p>
+            </div>
             <div className="control-panel">
-                 <div className="input-section">
-                    <label>1. Sube tu Logo</label>
+                 <div className="step">
+                    <label className="step-label"><span>1</span>Sube tu logo</label>
                     <div className="file-input-wrapper">
-                        <input type="file" accept="image/*" onChange={handleFileChange} />
-                        <span className="file-input-text">
-                            {logoFile ? <span className="file-name">{logoFile.name}</span> : 'Haz clic o arrastra un archivo aquí'}
-                        </span>
+                        <input type="file" accept="image/*" onChange={(e) => setLogoFile(e.target.files?.[0] || null)} />
+                        <p className="file-input-text">
+                           {logoFile ? logoFile.name : <><span>Haz clic para subir</span> o arrastra y suelta</>}
+                        </p>
                     </div>
                 </div>
-                <div className="input-section">
-                    <label>2. Contexto de la Marca (Opcional)</label>
-                    <textarea
-                        className="context-textarea"
-                        placeholder="Ej: una marca de café artesanal y ecológica..."
-                        value={brandContext}
-                        onChange={(e) => setBrandContext(e.target.value)}
-                    />
+                <div className="step">
+                    <label className="step-label"><span>2</span>Contexto de la Marca (Opcional)</label>
+                    <textarea value={brandContext} onChange={(e) => setBrandContext(e.target.value)} placeholder="Ej: una marca de café artesanal y ecológica..." />
                 </div>
-                <button className="generate-button" onClick={handleGenerateAllClick} disabled={!logoFile || isGenerating}>
-                    {isGenerating ? 'Generando...' : 'Generar 10 Mockups'}
+                <button className="generate-button" onClick={handleGenerateAllClick} disabled={!logoFile || isGeneratingAll}>
+                    {isGeneratingAll && <div className="spinner" style={{width: '20px', height: '20px', border:'3px solid rgba(0,0,0,0.2)', borderTopColor: '#111827'}}></div>}
+                    Generar 10 Mockups
                 </button>
             </div>
-
-            {mockups.length > 0 && (
-                <div className="mockups-grid">
-                    {mockups.map(({ id, prompt, status, imageUrl, error }) => (
-                        <div className="mockup-card" key={id}>
-                            {status === 'loading' && <div className="loader">Generando...</div>}
-                            {status === 'error' && <div className="error-message">{error}</div>}
-                            {status === 'success' && imageUrl && <img src={imageUrl} alt={prompt} />}
-                            
-                            {(status === 'success' || status === 'error') && (
-                                <div className="overlay">
-                                    <p>{prompt}</p>
-                                    <div className="actions">
-                                        {status === 'success' && imageUrl && <button className="action-button" onClick={() => handleDownloadClick(imageUrl)}>Descargar</button>}
-                                        <button className="action-button" onClick={() => handleRegenerateClick(id, prompt)}>Regenerar</button>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    ))}
-                </div>
-            )}
+            <div className="results-grid">
+                {images.map(img => <ImageCard key={img.id} image={img} onRegenerate={handleRegenerateClick} />)}
+            </div>
         </>
     );
 };
 
-// --- LOGO GENERATOR COMPONENT ---
-const LogoGenerator = () => {
+const LogoGenerator: React.FC = () => {
     const [logoDescription, setLogoDescription] = useState('');
-    const [logos, setLogos] = useState<GenerationState[]>([]);
-    const [isGenerating, setIsGenerating] = useState(false);
+    const [images, setImages] = useState<ImageState[]>([]);
+    const [isGeneratingAll, setIsGeneratingAll] = useState(false);
 
-    const generateSingleLogo = async (id: number, prompt: string) => {
-        setLogos(prev => prev.map(l => l.id === id ? { ...l, status: 'loading' } : l));
+    const generateImage = useCallback(async (id: number, prompt: string, style: string) => {
+        setImages(prev => prev.map(img => img.id === id ? { ...img, src: null, isLoading: true, error: null } : img));
+        
         try {
-            const result = await generateLogo(prompt);
+            const fullPrompt = `${logoDescription}, ${style}`;
+            const result = await generateLogo(fullPrompt);
+            setImages(prev => prev.map(img => img.id === id ? { ...img, src: `data:${result.mimeType};base64,${result.base64Image}`, isLoading: false } : img));
+        } catch (err) {
+            const errorMessage = err instanceof Error ? err.message : 'Error desconocido';
+            setImages(prev => prev.map(img => img.id === id ? { ...img, isLoading: false, error: errorMessage } : img));
+        }
+    }, [logoDescription]);
 
-            if (result.base64Image) {
-                setLogos(prev => prev.map(l => l.id === id ? { ...l, status: 'success', imageUrl: `data:${result.mimeType};base64,${result.base64Image}` } : l));
-            } else {
-                throw new Error("Gemini did not return an image.");
-            }
-        } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : "Unknown error";
-            console.error(`Error for prompt "${prompt}":`, errorMessage);
-            setLogos(prev => prev.map(l => l.id === id ? { ...l, status: 'error', error: errorMessage } : l));
+    const handleGenerateAllClick = async () => {
+        if (!logoDescription) {
+            alert("Por favor, describe el logo que quieres crear.");
+            return;
+        }
+        setIsGeneratingAll(true);
+        const selectedStyles = getRandomItems(logoStyles, 10);
+        const initialImages = selectedStyles.map((style, i) => ({
+            id: i,
+            src: null,
+            isLoading: false,
+            error: null,
+            prompt: `${logoDescription}, ${style}`,
+            style: style,
+        }));
+        setImages(initialImages);
+
+        await Promise.all(initialImages.map(img => generateImage(img.id, img.prompt, img.style!)));
+        setIsGeneratingAll(false);
+    };
+
+    const handleRegenerateClick = (id: number, prompt: string, style?: string) => {
+        if (style) {
+            generateImage(id, prompt, style);
         }
     };
-    
-    const handleGenerateAllClick = async () => {
-        if (!logoDescription) return;
-        setIsGenerating(true);
-        const initialLogos = LOGO_STYLES.map((style, i) => ({
-            id: i,
-            prompt: `${logoDescription}, in the style of ${style}`,
-            style: style,
-            status: 'idle' as const
-        })).slice(0, 10);
-
-        setLogos(initialLogos);
-
-        const generationPromises = initialLogos.map(logo =>
-            generateSingleLogo(logo.id, logo.prompt)
-        );
-        
-        await Promise.all(generationPromises);
-        setIsGenerating(false);
-    };
-
-    const handleRegenerateClick = (id: number, prompt: string) => {
-        if (isGenerating) return;
-        generateSingleLogo(id, prompt);
-    };
-
-    const handleDownloadClick = (imageUrl?: string) => {
-        if (!imageUrl) return;
-        const link = document.createElement('a');
-        link.href = imageUrl;
-        link.download = `logo-${Date.now()}.png`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    };
 
     return (
         <>
+            <div className="page-header">
+                <h2>Generador de Logos</h2>
+                <p>Crea conceptos de logos únicos a partir de tus ideas.</p>
+            </div>
             <div className="control-panel">
-                <div className="input-section">
-                    <label>1. Describe el logo que imaginas</label>
-                    <textarea
-                        className="context-textarea"
-                        placeholder="Ej: Un zorro astuto leyendo un libro para una librería llamada 'El Rincón del Lector'"
-                        value={logoDescription}
-                        onChange={(e) => setLogoDescription(e.target.value)}
-                    />
+                <div className="step">
+                    <label className="step-label"><span>1</span>Describe tu logo ideal</label>
+                    <textarea value={logoDescription} onChange={(e) => setLogoDescription(e.target.value)} placeholder="Ej: un zorro astuto leyendo un libro para una librería..." />
                 </div>
-                <button className="generate-button" onClick={handleGenerateAllClick} disabled={!logoDescription || isGenerating}>
-                    {isGenerating ? 'Generando...' : 'Generar 10 Logos'}
+                <button className="generate-button" onClick={handleGenerateAllClick} disabled={!logoDescription || isGeneratingAll}>
+                    {isGeneratingAll && <div className="spinner" style={{width: '20px', height: '20px', border:'3px solid rgba(0,0,0,0.2)', borderTopColor: '#111827'}}></div>}
+                    Generar 10 Logos
                 </button>
             </div>
-
-            {logos.length > 0 && (
-                <div className="mockups-grid">
-                    {logos.map(({ id, prompt, style, status, imageUrl, error }) => {
-                        // Using the explicitly stored 'style' is safer than splitting the prompt.
-                        const styleText = style || prompt;
-
-                        return (
-                            <div className="mockup-card" key={id}>
-                                {status === 'loading' && <div className="loader">Generando...</div>}
-                                {status === 'error' && <div className="error-message">{error}</div>}
-                                {status === 'success' && imageUrl && <img src={imageUrl} alt={prompt} />}
-                                
-                                {(status === 'success' || status === 'error') && (
-                                    <div className="overlay">
-                                        <p>{styleText}</p>
-                                        <div className="actions">
-                                            {status === 'success' && imageUrl && <button className="action-button" onClick={() => handleDownloadClick(imageUrl)}>Descargar</button>}
-                                            <button className="action-button" onClick={() => handleRegenerateClick(id, prompt)}>Regenerar</button>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    })}
-                </div>
-            )}
+            <div className="results-grid">
+                {images.map(img => <ImageCard key={img.id} image={img} onRegenerate={(id, prompt, style) => handleRegenerateClick(id, prompt, style)} />)}
+            </div>
         </>
     );
 };
 
+interface ImageCardProps {
+  image: ImageState;
+  onRegenerate: (id: number, prompt: string, style?: string) => void;
+}
 
-// --- MAIN APP COMPONENT ---
-function App() {
-    const [isMenuOpen, setIsMenuOpen] = useState(false);
-    const [currentPage, setCurrentPage] = useState<'mockups' | 'logos'>('mockups');
-    
-    useEffect(() => {
-        document.body.style.overflow = isMenuOpen ? 'hidden' : 'auto';
-    }, [isMenuOpen]);
-
-    const navigate = (page: 'mockups' | 'logos') => {
-        setCurrentPage(page);
-        setIsMenuOpen(false);
+const ImageCard: React.FC<ImageCardProps> = ({ image, onRegenerate }) => {
+    const handleDownload = () => {
+        if (image.src) {
+            const link = document.createElement('a');
+            link.href = image.src;
+            link.download = `generated-image-${image.id}.png`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
     };
 
-    const pageTitle = currentPage === 'mockups' ? 'Generador de Mockups con IA' : 'Generador de Logos con IA';
-    
+    const styleText = image.style ? image.style.split(',')[0] : image.prompt.slice(0, 30) + '...';
+
     return (
-        <>
-            <div className={`overlay-bg ${isMenuOpen ? 'open' : ''}`} onClick={() => setIsMenuOpen(false)}></div>
-            <nav className={`mobile-nav ${isMenuOpen ? 'open' : ''}`}>
-                <ul className="nav-links">
-                    <li><a href="#" onClick={() => navigate('mockups')}>Generador de mockups con IA</a></li>
-                    <li><a href="#" onClick={() => navigate('logos')}>Generador de logos <span className="new-badge">Nuevo</span></a></li>
-                </ul>
-            </nav>
-            
-            <header className="header">
-                 <h1>{pageTitle}</h1>
-                 <button className={`hamburger-menu ${isMenuOpen ? 'open' : ''}`} onClick={() => setIsMenuOpen(!isMenuOpen)} aria-label="Toggle menu">
-                    <div className="bar"></div>
-                    <div className="bar"></div>
-                    <div className="bar"></div>
-                </button>
-            </header>
-            
-            <main className="main-container">
-                {currentPage === 'mockups' ? <MockupGenerator /> : <LogoGenerator />}
-            </main>
-        </>
+        <div className="card">
+            {image.isLoading ? (
+                <div className="card-status">
+                    <div className="spinner"></div>
+                    <p className="card-status-prompt">Generando "{styleText}"</p>
+                </div>
+            ) : image.error ? (
+                <div className="card-status">
+                     <p className="error-message">{image.error}</p>
+                     <p className="card-status-prompt">Prompt: "{styleText}"</p>
+                </div>
+            ) : image.src ? (
+                <>
+                    <img src={image.src} alt={image.prompt} className="card-image" />
+                    <div className="card-overlay">
+                        <div className="card-actions">
+                            <button className="card-button" onClick={handleDownload} title="Descargar">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            </button>
+                            <button className="card-button" onClick={() => onRegenerate(image.id, image.prompt, image.style)} title="Regenerar">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                </>
+            ) : null}
+        </div>
     );
+};
+
+function App() {
+  const [activePage, setActivePage] = useState<Page>('mockups');
+
+  return (
+    <>
+      <aside className="sidebar">
+        <div className="sidebar-header">
+          <h1>CreativeIA<span>.</span></h1>
+        </div>
+        <nav>
+          <div className={`nav-tab ${activePage === 'mockups' ? 'active' : ''}`} onClick={() => setActivePage('mockups')}>
+            Generador de Mockups
+          </div>
+          <div className={`nav-tab ${activePage === 'logos' ? 'active' : ''}`} onClick={() => setActivePage('logos')}>
+            Generador de Logos
+          </div>
+        </nav>
+      </aside>
+      <main className="main-container">
+        {activePage === 'mockups' ? <MockupGenerator /> : <LogoGenerator />}
+      </main>
+    </>
+  );
 }
 
 export default App;

@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Generador de Mockups con IA</title>
-    <script type="importmap">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Generador de Mockups con IA</title>
+  <script type="importmap">
     {
       "imports": {
         "react": "https://aistudiocdn.com/react@^19.2.0",
@@ -13,353 +13,354 @@
         "@google/genai": "https://aistudiocdn.com/@google/genai@^1.27.0"
       }
     }
-    </script>
-    <style>
-        :root {
-            --background-color: #0d1117;
-            --control-panel-bg: rgba(30, 41, 59, 0.6);
-            --border-color: rgba(56, 189, 248, 0.2);
-            --text-color: #e5e7eb;
-            --accent-color-1: #06b6d4; /* Cian */
-            --accent-color-2: #14b8a6; /* Verde azulado */
-            --button-hover-bg: rgba(255, 255, 255, 0.1);
-            --error-color: #f87171;
-            --success-color: #4ade80;
-        }
+  </script>
+  <style>
+    :root {
+      --background-color: #111827;
+      --sidebar-bg: rgba(31, 41, 55, 0.6);
+      --main-bg: #1f2937;
+      --text-color: #e5e7eb;
+      --text-muted: #9ca3af;
+      --accent-color: #2dd4bf;
+      --accent-hover: #5eead4;
+      --border-color: rgba(107, 114, 128, 0.2);
+      --card-bg: rgba(55, 65, 81, 0.5);
+      --card-hover-bg: rgba(75, 85, 99, 0.6);
+      --error-color: #f87171;
+      --error-bg: rgba(248, 113, 113, 0.1);
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+    }
 
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            background-color: var(--background-color);
-            color: var(--text-color);
-            margin: 0;
-            padding: 2rem;
-            min-height: 100vh;
-            box-sizing: border-box;
-        }
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-        #root {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 2rem;
-            width: 100%;
-        }
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
 
-        .header {
-            width: 100%;
-            max-width: 1200px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
+    body {
+      background-color: var(--background-color);
+      color: var(--text-color);
+      font-family: var(--font-sans);
+      overflow-x: hidden;
+      line-height: 1.5;
+    }
 
-        .header h1 {
-            font-size: 1.8rem;
-            margin: 0;
-            background: -webkit-linear-gradient(var(--accent-color-1), var(--accent-color-2));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
+    #root {
+      display: flex;
+      min-height: 100vh;
+    }
 
-        .hamburger-menu {
-            background: none;
-            border: none;
-            cursor: pointer;
-            padding: 10px;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-around;
-            width: 30px;
-            height: 25px;
-            z-index: 1001;
-        }
+    .sidebar {
+      width: 280px;
+      flex-shrink: 0;
+      background-color: var(--sidebar-bg);
+      backdrop-filter: blur(10px);
+      border-right: 1px solid var(--border-color);
+      padding: 2rem 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 2.5rem;
+    }
+    
+    .sidebar-header h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: white;
+    }
+    
+    .sidebar-header h1 span {
+      color: var(--accent-color);
+    }
+    
+    .sidebar nav {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
 
-        .hamburger-menu .bar {
-            width: 100%;
-            height: 3px;
-            background-color: var(--text-color);
-            border-radius: 2px;
-            transition: all 0.3s ease-in-out;
-        }
+    .nav-tab {
+      padding: 0.75rem 1rem;
+      border-radius: 0.5rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background-color 0.2s ease, color 0.2s ease;
+      border: 2px solid transparent;
+      color: var(--text-muted);
+    }
+    
+    .nav-tab:hover {
+      background-color: var(--card-hover-bg);
+      color: var(--text-color);
+    }
 
-        .hamburger-menu.open .bar:nth-child(1) {
-            transform: rotate(45deg) translate(6px, 6px);
-        }
-        .hamburger-menu.open .bar:nth-child(2) {
-            opacity: 0;
-        }
-        .hamburger-menu.open .bar:nth-child(3) {
-            transform: rotate(-45deg) translate(6px, -6px);
-        }
-        
-        .mobile-nav {
-            position: fixed;
-            top: 0;
-            right: -300px; /* Start off-screen */
-            width: 300px;
-            height: 100%;
-            background: var(--control-panel-bg);
-            backdrop-filter: blur(15px);
-            -webkit-backdrop-filter: blur(15px);
-            box-shadow: -10px 0px 30px rgba(0,0,0,0.5);
-            border-left: 1px solid var(--border-color);
-            transition: right 0.3s ease-in-out;
-            z-index: 1000;
-            padding-top: 5rem;
-        }
+    .nav-tab.active {
+      background-color: var(--card-bg);
+      border-color: var(--accent-color);
+      color: white;
+      font-weight: 600;
+    }
 
-        .mobile-nav.open {
-            right: 0;
-        }
+    .main-container {
+      flex-grow: 1;
+      padding: 2rem 3rem;
+      overflow-y: auto;
+    }
 
-        .nav-links {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }
+    .page-header {
+      margin-bottom: 2rem;
+    }
 
-        .nav-links li a {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 1rem 2rem;
-            color: var(--text-color);
-            text-decoration: none;
-            font-size: 1.2rem;
-            transition: background-color 0.2s;
-        }
+    .page-header h2 {
+      font-size: 2rem;
+      font-weight: 700;
+      color: white;
+    }
 
-        .nav-links li a:hover {
-            background-color: var(--button-hover-bg);
-        }
+    .page-header p {
+      color: var(--text-muted);
+      font-size: 1.1rem;
+      margin-top: 0.5rem;
+    }
 
-        .new-badge {
-            background-color: var(--accent-color-1);
-            color: white;
-            font-size: 0.7rem;
-            padding: 3px 8px;
-            border-radius: 12px;
-            font-weight: bold;
-            text-transform: uppercase;
-        }
+    .control-panel {
+      background-color: var(--sidebar-bg);
+      backdrop-filter: blur(10px);
+      border: 1px solid var(--border-color);
+      border-radius: 1rem;
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
 
-        .overlay-bg {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.5);
-            z-index: 999;
-            opacity: 0;
-            visibility: hidden;
-            transition: opacity 0.3s, visibility 0.3s;
-        }
+    .step {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+    
+    .step-label {
+      font-weight: 600;
+      font-size: 1rem;
+      color: var(--text-color);
+    }
 
-        .overlay-bg.open {
-            opacity: 1;
-            visibility: visible;
-        }
+    .step-label span {
+      background-color: var(--accent-color);
+      color: var(--background-color);
+      border-radius: 9999px;
+      width: 1.5rem;
+      height: 1.5rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      margin-right: 0.5rem;
+    }
 
-        .main-container {
-            width: 100%;
-            max-width: 1200px;
-            display: flex;
-            flex-direction: column;
-            gap: 2rem;
-        }
+    .file-input-wrapper {
+      position: relative;
+      background-color: var(--card-bg);
+      border: 2px dashed var(--border-color);
+      border-radius: 0.5rem;
+      padding: 1rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s ease;
+    }
+    
+    .file-input-wrapper:hover {
+      border-color: var(--accent-color);
+    }
 
-        .control-panel {
-            background: var(--control-panel-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 16px;
-            padding: 2rem;
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
-            display: flex;
-            flex-direction: column;
-            gap: 1.5rem;
-        }
-        
-        .control-panel h1 {
-            display: none; /* Hide old title, it's in the header now */
-        }
+    .file-input-wrapper input[type="file"] {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      top: 0;
+      left: 0;
+      opacity: 0;
+      cursor: pointer;
+    }
 
-        .input-section {
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
-        }
-        
-        .input-section label {
-            font-size: 1.1rem;
-            font-weight: 600;
-        }
+    .file-input-text {
+      color: var(--text-muted);
+    }
 
-        .file-input-wrapper {
-            position: relative;
-            width: 100%;
-            height: 100px;
-            border: 2px dashed var(--border-color);
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: background-color 0.3s, border-color 0.3s;
-        }
+    .file-input-text span {
+      color: var(--accent-color);
+      font-weight: 500;
+    }
 
-        .file-input-wrapper:hover {
-            background-color: rgba(56, 189, 248, 0.1);
-            border-color: var(--accent-color-1);
-        }
+    .file-name {
+        margin-top: 0.5rem;
+        font-style: italic;
+        color: var(--text-color);
+    }
 
-        .file-input-wrapper input[type="file"] {
-            position: absolute;
-            width: 100%;
-            height: 100%;
-            opacity: 0;
-            cursor: pointer;
-        }
-        
-        .file-input-text {
-            color: var(--text-color);
-            pointer-events: none;
-        }
+    textarea {
+      background-color: var(--card-bg);
+      border: 1px solid var(--border-color);
+      color: var(--text-color);
+      border-radius: 0.5rem;
+      padding: 0.75rem;
+      font-family: inherit;
+      font-size: 1rem;
+      min-height: 80px;
+      resize: vertical;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
 
-        .file-name {
-            color: var(--success-color);
-            font-weight: bold;
-        }
+    textarea:focus {
+      outline: none;
+      border-color: var(--accent-color);
+      box-shadow: 0 0 0 2px rgba(45, 212, 191, 0.3);
+    }
+    
+    .generate-button {
+      background-color: var(--accent-color);
+      color: var(--background-color);
+      border: none;
+      padding: 0.8rem 1.5rem;
+      font-size: 1rem;
+      font-weight: 600;
+      border-radius: 0.5rem;
+      cursor: pointer;
+      transition: background-color 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+    
+    .generate-button:hover:not(:disabled) {
+      background-color: var(--accent-hover);
+    }
+    
+    .generate-button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
 
-        .context-textarea {
-            background-color: rgba(15, 23, 42, 0.8);
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            color: var(--text-color);
-            padding: 0.75rem;
-            font-size: 1rem;
-            min-height: 80px;
-            resize: vertical;
-        }
+    .results-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 1.5rem;
+    }
 
-        .context-textarea:focus {
-            outline: none;
-            border-color: var(--accent-color-1);
-            box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.4);
-        }
+    .card {
+      background-color: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 1rem;
+      overflow: hidden;
+      position: relative;
+      aspect-ratio: 1 / 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    
+    .card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+    }
 
-        .generate-button {
-            padding: 1rem;
-            border-radius: 8px;
-            border: none;
-            background: linear-gradient(90deg, var(--accent-color-1), var(--accent-color-2));
-            color: white;
-            cursor: pointer;
-            font-size: 1.2rem;
-            font-weight: bold;
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
+    .card-image {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
 
-        .generate-button:hover:not(:disabled) {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 20px rgba(6, 182, 212, 0.4);
-        }
+    .card-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(to top, rgba(0,0,0,0.8), transparent);
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      padding: 1rem;
+    }
+    
+    .card:hover .card-overlay {
+      opacity: 1;
+    }
+    
+    .card-actions {
+      display: flex;
+      gap: 0.5rem;
+      transform: translateY(10px);
+      transition: transform 0.3s ease;
+    }
 
-        .generate-button:disabled {
-            background: #4b5563;
-            cursor: not-allowed;
-            opacity: 0.7;
-        }
-        
-        .mockups-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 1.5rem;
-        }
-        
-        .mockup-card {
-            position: relative;
-            aspect-ratio: 1 / 1;
-            background-color: var(--control-panel-bg);
-            border-radius: 12px;
-            overflow: hidden;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border: 1px solid var(--border-color);
-            transition: transform 0.3s;
-        }
+    .card:hover .card-actions {
+      transform: translateY(0);
+    }
 
-        .mockup-card:hover {
-            transform: scale(1.03);
-        }
-        
-        .mockup-card img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
+    .card-button {
+      background-color: rgba(255, 255, 255, 0.2);
+      backdrop-filter: blur(5px);
+      border: 1px solid rgba(255,255,255,0.3);
+      color: white;
+      padding: 0.5rem;
+      border-radius: 0.5rem;
+      cursor: pointer;
+      transition: background-color 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .card-button:hover {
+      background-color: rgba(255, 255, 255, 0.3);
+    }
 
-        .mockup-card .overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.7);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            text-align: center;
-            padding: 1rem;
-            box-sizing: border-box;
-            opacity: 0;
-            transition: opacity 0.3s;
-        }
+    .card-status {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 1rem;
+    }
 
-        .mockup-card:hover .overlay {
-            opacity: 1;
-        }
-        
-        .mockup-card .actions {
-            display: flex;
-            gap: 1rem;
-            margin-top: 1rem;
-        }
-        
-        .mockup-card .action-button {
-            background-color: var(--button-hover-bg);
-            border: 1px solid var(--border-color);
-            color: var(--text-color);
-            padding: 0.5rem 1rem;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: background-color 0.2s;
-            font-size: 0.9rem;
-        }
-        
-        .mockup-card .action-button:hover {
-            background-color: var(--accent-color-1);
-            border-color: var(--accent-color-1);
-        }
-        
-        .loader, .error-message {
-            color: var(--text-color);
-            font-size: 1rem;
-            font-style: italic;
-        }
+    .card-status-prompt {
+        font-size: 0.9rem;
+        font-style: italic;
+        color: var(--text-muted);
+        margin-top: 0.5rem;
+        max-width: 90%;
+    }
+    
+    .error-message {
+      color: var(--error-color);
+      font-size: 0.875rem;
+    }
 
-        .error-message {
-            color: var(--error-color);
-            font-weight: bold;
-        }
-    </style>
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 4px solid rgba(255,255,255,0.2);
+      border-top-color: var(--accent-color);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
 </head>
 <body>
-    <div id="root"></div>
-    <script type="module" src="/index.tsx"></script>
+  <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
 </body>
 </html>
