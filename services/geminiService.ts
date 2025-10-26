@@ -23,7 +23,7 @@ const handleError = (error: unknown, context: string): never => {
         }
         throw new Error(`${error.message}`);
     }
-    throw new Error(`An unknown error occurred in ${context}.`);
+    throw new Error(`Ocurrió un error desconocido en ${context}.`);
 };
 
 const parseJsonResponse = (text: string) => {
@@ -70,7 +70,7 @@ export const getVideoOperationStatus = async (operation: any) => {
 export const analyzeImage = async ({ base64Image, mimeType }: { base64Image: string; mimeType: string; }) => {
     try {
         const ai = getAiClient();
-        const prompt = "Analyze this image from the perspective of a senior digital marketing strategist. Provide a detailed analysis covering:\n1.  **First Impression & Emotional Impact:** What is the immediate feeling or message conveyed?\n2.  **Composition & Visual Hierarchy:** What elements draw the eye? Is it balanced? How does it guide the viewer?\n3.  **Color Palette & Branding:** How do the colors influence mood? Are they consistent with a potential brand identity?\n4.  **Target Audience:** Who would this image most likely appeal to and why?\n5.  **Marketing Opportunities & Improvements:** Suggest 3 concrete ways this image could be used in a marketing campaign or improved for better performance.";
+        const prompt = "Analiza esta imagen desde la perspectiva de un estratega senior de marketing digital. Proporciona un análisis detallado que cubra:\n1.  **Primera Impresión e Impacto Emocional:** ¿Cuál es el sentimiento o mensaje inmediato que transmite?\n2.  **Composición y Jerarquía Visual:** ¿Qué elementos atraen la vista? ¿Está equilibrada? ¿Cómo guía al espectador?\n3.  **Paleta de Colores y Branding:** ¿Cómo influyen los colores en el estado de ánimo? ¿Son consistentes con una posible identidad de marca?\n4.  **Público Objetivo:** ¿A quién atraería más probablemente esta imagen y por qué?\n5.  **Oportunidades de Marketing y Mejoras:** Sugiere 3 formas concretas en que esta imagen podría usarse en una campaña de marketing o mejorarse para un mayor rendimiento.\n\n**Importante: Todo el análisis debe estar redactado en español latino.**";
         
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
@@ -154,7 +154,7 @@ export const generateBranding = async (prompt: string, count: number) => {
         const ai = getAiClient();
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash",
-            contents: `Generate ${count} distinct branding concepts for the following idea: "${prompt}". For each concept, provide a color palette of 5 hex codes, a font pairing suggestion, and a brief description of the tone of voice.`,
+            contents: `Generate ${count} distinct branding concepts for the following idea: "${prompt}". For each concept, provide a color palette of 5 hex codes, a font pairing suggestion, and a brief description of the tone of voice. Important: The entire response must be in Latin American Spanish.`,
             config: {
                 responseMimeType: "application/json",
                 responseSchema: {
@@ -181,7 +181,7 @@ export const generateSocialPostIdeas = async (prompt: string) => {
         const ai = getAiClient();
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash",
-            contents: `Generate 10 unique social media post concepts for the following objective: "${prompt}". For each concept, provide a short, engaging "copy" for the post and a detailed, descriptive "imagePrompt" for an AI image generator to create a compelling visual.`,
+            contents: `Generate 10 unique social media post concepts for the following objective: "${prompt}". For each concept, provide a short, engaging "copy" for the post and a detailed, descriptive "imagePrompt" for an AI image generator to create a compelling visual. Important: The entire response must be in Latin American Spanish.`,
             config: {
                 responseMimeType: "application/json",
                 responseSchema: {
@@ -207,7 +207,7 @@ export const generateCampaignIdeas = async (prompt: string, count: number) => {
         const ai = getAiClient();
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash",
-            contents: `Generate ${count} distinct marketing campaign concepts based on this brief: "${prompt}". For each concept, provide a catchy "concept" name, a brief "summary" of the idea, and a list of 3-4 "keyActions" to execute it.`,
+            contents: `Generate ${count} distinct marketing campaign concepts based on this brief: "${prompt}". For each concept, provide a catchy "concept" name, a brief "summary" of the idea, and a list of 3-4 "keyActions" to execute it. Important: The entire response must be in Latin American Spanish.`,
             config: {
                 responseMimeType: "application/json",
                 responseSchema: {
@@ -234,7 +234,7 @@ export const generateScripts = async (prompt: string, count: number) => {
         const ai = getAiClient();
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash",
-            contents: `Generate ${count} short video script concepts (for Reels/TikTok) for the following topic: "${prompt}". For each, provide a "concept" name and a structured "script" detailing the hook, scenes, and call to action, keeping it under 15 seconds.`,
+            contents: `Generate ${count} short video script concepts (for Reels/TikTok) for the following topic: "${prompt}". For each, provide a "concept" name and a structured "script" detailing the hook, scenes, and call to action, keeping it under 15 seconds. Important: The entire response must be in Latin American Spanish.`,
             config: {
                 responseMimeType: "application/json",
                 responseSchema: {
@@ -260,7 +260,7 @@ export const generateCopywriting = async (prompt: string, count: number) => {
         const ai = getAiClient();
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash",
-            contents: `Generate ${count} distinct pieces of advertising copy based on this brief:\n${prompt}`,
+            contents: `Generate ${count} distinct pieces of advertising copy based on this brief:\n${prompt}. Important: The entire response must be in Latin American Spanish.`,
             config: {
                 responseMimeType: "application/json",
                 responseSchema: {
@@ -285,7 +285,7 @@ export const generatePersonas = async (prompt: string, count: number) => {
         const ai = getAiClient();
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash",
-            contents: `Generate ${count} detailed buyer personas for this product/client: "${prompt}".`,
+            contents: `Generate ${count} detailed buyer personas for this product/client: "${prompt}". Important: The entire response must be in Latin American Spanish.`,
             config: {
                 responseMimeType: "application/json",
                 responseSchema: {
@@ -315,7 +315,7 @@ export const generateSeoIdeas = async (prompt: string, count: number) => {
         const ai = getAiClient();
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash",
-            contents: `Generate a mix of ${count} SEO content ideas for the keyword "${prompt}". Include blog post titles, frequently asked questions, and meta descriptions.`,
+            contents: `Generate a mix of ${count} SEO content ideas for the keyword "${prompt}". Include blog post titles, frequently asked questions, and meta descriptions. Important: The entire response must be in Latin American Spanish.`,
             config: {
                 responseMimeType: "application/json",
                 responseSchema: {
@@ -341,7 +341,7 @@ export const generateNamesAndSlogans = async (prompt: string, count: number) => 
         const ai = getAiClient();
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash",
-            contents: `Generate a mix of ${count} brand names and slogans for a business with this essence: "${prompt}". For each, provide a justification.`,
+            contents: `Generate a mix of ${count} brand names and slogans for a business with this essence: "${prompt}". For each, provide a justification. Important: The entire response must be in Latin American Spanish.`,
             config: {
                 responseMimeType: "application/json",
                 responseSchema: {

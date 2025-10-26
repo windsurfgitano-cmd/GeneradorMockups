@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { 
     generateMockup, 
@@ -367,8 +368,8 @@ const VideoGenerator = () => {
             } else {
                 setTimeout(pollOperation, 10000);
             }
-// Fix: The catch block now safely handles errors by typing the exception as `unknown` and checking if it's an `Error` instance before accessing the `message` property. This prevents the "Argument of type 'unknown' is not assignable to parameter of type 'string'" error.
         } catch (e: unknown) {
+            // Fix: Safely handle the caught exception by checking if it's an instance of Error before accessing its message property. This resolves the TypeScript error about 'unknown' type.
             const message = e instanceof Error ? e.message : 'Error al verificar el estado del video.';
             setError(message);
             if (message.includes("Requested entity was not found")) {
@@ -595,7 +596,7 @@ const MockupGenerator = () => {
              </div>
              <div className="control-section">
                 <label className="control-label">2. Contexto de la Marca <span>(Opcional)</span></label>
-                <textarea value={brandContext} onChange={(e) => setBrandContext(e.target.value)} rows={2} placeholder="Ej: una marca de café artesanal y ecológica"></textarea>
+                <textarea value={brandContext} onChange={(e) => setBrandContext(e.target.value)} rows={3} placeholder="Ej: Una marca de café artesanal y ecológica"></textarea>
              </div>
          </>
     );
@@ -613,45 +614,32 @@ const LogoGenerator = () => {
         const isGenerating = results.some(r => r.status === 'loading');
         if (isGenerating && isMainGeneration) return;
 
+        const generateSingle = async (id: number) => {
+            try {
+                const data = await generateImageFromText(prompt);
+                setResults(prev => prev.map(r => r.id === id ? { id, status: 'success', imageUrl: `data:${data.mimeType};base64,${data.base64Image}`, data: { style: data.style } } : r));
+            } catch (e: any) {
+                setResults(prev => prev.map(r => r.id === id ? { id, status: 'error', error: e.message } : r));
+            }
+        };
+
         if (isMainGeneration) {
             setResults(Array(10).fill(null).map((_, i) => ({ id: i, status: 'loading' })));
-        } else {
+            Array(10).fill(null).forEach((_, i) => generateSingle(i));
+        } else if (typeof regenerateId !== 'undefined') {
             setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'loading' } : r));
-        }
-
-        try {
-            if (isMainGeneration) {
-                const promises = Array(10).fill(null).map((_, i) => 
-                    generateImageFromText(prompt)
-                        .then(data => ({ id: i, status: 'success' as Status, imageUrl: `data:${data.mimeType};base64,${data.base64Image}`, data: { style: data.style } }))
-                        .catch(e => ({ id: i, status: 'error' as Status, error: e.message }))
-                );
-                 for (const promise of promises) {
-                    const result = await promise;
-                    setResults(prev => prev.map(r => r.id === result.id ? result : r));
-                }
-            } else {
-                const data = await generateImageFromText(prompt);
-                setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'success', imageUrl: `data:${data.mimeType};base64,${data.base64Image}`, data: { style: data.style } } : r));
-            }
-        } catch (e: any) {
-            const errorUpdater = (item: ResultItem) => ({ ...item, status: 'error' as Status, error: e.message });
-            if (isMainGeneration) {
-                setResults(prev => prev.map(errorUpdater));
-            } else {
-                setResults(prev => prev.map(r => r.id === regenerateId ? errorUpdater(r) : r));
-            }
+            generateSingle(regenerateId);
         }
     }, [prompt, results]);
 
     const inputs = (
-         <div className="control-section">
+        <div className="control-section">
             <label className="control-label">Describe el logo que imaginas</label>
-            <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={3} placeholder="Ej: Un zorro astuto leyendo un libro para una librería..."></textarea>
-         </div>
+            <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={3} placeholder="Ej: Un zorro astuto leyendo un libro para una librería"></textarea>
+        </div>
     );
     
-    return <GenericGenerator inputs={inputs} buttonText="Generar 10 Logos" onGenerate={handleGenerate} results={results} CardComponent={({item, onRegenerate}) => <ImageCard item={item} title={item.data?.style} onRegenerate={onRegenerate} />} />;
+    return <GenericGenerator inputs={inputs} buttonText="Generar 10 Logos" onGenerate={handleGenerate} results={results} CardComponent={ImageCard} />;
 };
 
 const BrandingAssistant = () => {
@@ -664,17 +652,26 @@ const BrandingAssistant = () => {
         const isGenerating = results.some(r => r.status === 'loading');
         if (isGenerating && isMainGeneration) return;
 
-        if (isMainGeneration) setResults(Array(10).fill(null).map((_, i) => ({ id: i, status: 'loading' })));
-        else setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'loading' } : r));
+        if (isMainGeneration) {
+            setResults(Array(10).fill(null).map((_, i) => ({ id: i, status: 'loading' })));
+        } else {
+            setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'loading' } : r));
+        }
 
         try {
             const data = await generateBranding(prompt, isMainGeneration ? 10 : 1);
-            if (isMainGeneration) setResults(data.map((item, i) => ({ id: i, status: 'success', data: item })));
-            else setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'success', data: data[0] } : r));
+            if (isMainGeneration) {
+                setResults(data.map((item, i) => ({ id: i, status: 'success', data: item })));
+            } else {
+                setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'success', data: data[0] } : r));
+            }
         } catch (e: any) {
-            const errorUpdater = (item: ResultItem) => ({ ...item, status: 'error' as Status, error: e.message });
-            if (isMainGeneration) setResults(prev => prev.map(errorUpdater));
-            else setResults(prev => prev.map(r => r.id === regenerateId ? errorUpdater(r) : r));
+             const errorUpdater = (item: ResultItem) => ({ ...item, status: 'error' as Status, error: e.message });
+            if (isMainGeneration) {
+                setResults(prev => prev.map(errorUpdater));
+            } else {
+                setResults(prev => prev.map(r => r.id === regenerateId ? errorUpdater(r) : r));
+            }
         }
     }, [prompt, results]);
     
@@ -684,7 +681,7 @@ const BrandingAssistant = () => {
             <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={3} placeholder="Ej: Una marca de cuidado de la piel, vegana y natural"></textarea>
         </div>
     );
-    
+
     return <GenericGenerator inputs={inputs} buttonText="Generar 10 Ideas" onGenerate={handleGenerate} results={results} CardComponent={BrandingCard} />;
 };
 
@@ -693,52 +690,50 @@ const SocialPostGenerator = () => {
     const [results, setResults] = useState<ResultItem[]>([]);
 
     const handleGenerate = useCallback(async (regenerateId?: number) => {
+        if (!prompt) return;
+
         const isMainGeneration = typeof regenerateId === 'undefined';
         const isGenerating = results.some(r => r.status === 'loading');
+        if (isGenerating && isMainGeneration) return;
         
         if (isMainGeneration) {
-            if (!prompt || isGenerating) return;
-            const initialResults: ResultItem[] = Array(10).fill(null).map((_, i) => ({ id: i, status: 'loading' }));
-            setResults(initialResults);
+            setResults(Array(10).fill(null).map((_, i) => ({ id: i, status: 'loading' })));
             try {
-                const postIdeas = await generateSocialPostIdeas(prompt);
-                const resultsWithData = postIdeas.map((idea, i) => ({ id: i, status: 'loading', data: idea }));
-                setResults(resultsWithData);
-
-                const imagePromises = resultsWithData.map(item =>
-                    generateImageFromText(item.data.imagePrompt, true)
-                        .then(imgData => ({ ...item, status: 'success' as Status, imageUrl: `data:${imgData.mimeType};base64,${imgData.base64Image}` }))
-                        .catch(e => ({ ...item, status: 'error' as Status, error: e.message }))
-                );
-                for (const promise of imagePromises) {
-                    const result = await promise;
-                    setResults(prev => prev.map(r => r.id === result.id ? result : r));
-                }
+                const concepts = await generateSocialPostIdeas(prompt);
+                setResults(concepts.map((concept, i) => ({ id: i, status: 'loading', data: concept })));
+                
+                concepts.forEach(async (concept, i) => {
+                    try {
+                        const imageData = await generateImageFromText(concept.imagePrompt, true);
+                        setResults(prev => prev.map(r => r.id === i ? { ...r, status: 'success', imageUrl: `data:${imageData.mimeType};base64,${imageData.base64Image}` } : r));
+                    } catch (e: any) {
+                         setResults(prev => prev.map(r => r.id === i ? { ...r, status: 'error', error: e.message } : r));
+                    }
+                });
             } catch (e: any) {
-                setResults(prev => prev.map(item => ({ ...item, status: 'error', error: e.message })));
+                setResults(Array(10).fill(null).map((_, i) => ({ id: i, status: 'error', error: e.message })));
             }
-        } else { // Regenerate
-            const itemToRegen = results.find(r => r.id === regenerateId);
-            if (!itemToRegen?.data?.imagePrompt) return;
-            if (isGenerating) return;
+        } else {
+            // Regenerate only the image for an existing concept
+            const currentItem = results.find(r => r.id === regenerateId);
+            if (!currentItem || !currentItem.data) return;
 
-            setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'loading', imageUrl: undefined, error: undefined } : r));
+            setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'loading' } : r));
             try {
-                const imgData = await generateImageFromText(itemToRegen.data.imagePrompt, true);
-                setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'success', imageUrl: `data:${imgData.mimeType};base64,${imgData.base64Image}` } : r));
+                const imageData = await generateImageFromText(currentItem.data.imagePrompt, true);
+                setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'success', imageUrl: `data:${imageData.mimeType};base64,${imageData.base64Image}` } : r));
             } catch (e: any) {
                 setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'error', error: e.message } : r));
             }
         }
     }, [prompt, results]);
-    
+
     const inputs = (
-         <div className="control-section">
+        <div className="control-section">
             <label className="control-label">Describe el objetivo de tu post</label>
             <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={3} placeholder="Ej: Promocionar un descuento del 20% en nuestro café de origen colombiano"></textarea>
-         </div>
+        </div>
     );
-    
     return <GenericGenerator inputs={inputs} buttonText="Generar 10 Posts" onGenerate={handleGenerate} results={results} CardComponent={SocialPostCard} />;
 };
 
@@ -747,7 +742,7 @@ const CampaignIdeaGenerator = () => {
     const [objective, setObjective] = useState('');
     const [audience, setAudience] = useState('');
     const [results, setResults] = useState<ResultItem[]>([]);
-
+    
     const handleGenerate = useCallback(async (regenerateId?: number) => {
         const fullPrompt = `Producto: ${product}\nObjetivo: ${objective}\nPúblico: ${audience}`;
         if (!product || !objective || !audience) return;
@@ -756,17 +751,26 @@ const CampaignIdeaGenerator = () => {
         const isGenerating = results.some(r => r.status === 'loading');
         if (isGenerating && isMainGeneration) return;
 
-        if (isMainGeneration) setResults(Array(10).fill(null).map((_, i) => ({ id: i, status: 'loading' })));
-        else setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'loading' } : r));
+        if (isMainGeneration) {
+            setResults(Array(10).fill(null).map((_, i) => ({ id: i, status: 'loading' })));
+        } else {
+            setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'loading' } : r));
+        }
 
         try {
             const data = await generateCampaignIdeas(fullPrompt, isMainGeneration ? 10 : 1);
-            if (isMainGeneration) setResults(data.map((item, i) => ({ id: i, status: 'success', data: item })));
-            else setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'success', data: data[0] } : r));
+            if (isMainGeneration) {
+                setResults(data.map((item, i) => ({ id: i, status: 'success', data: item })));
+            } else {
+                setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'success', data: data[0] } : r));
+            }
         } catch (e: any) {
-            const errorUpdater = (item: ResultItem) => ({ ...item, status: 'error' as Status, error: e.message });
-            if (isMainGeneration) setResults(prev => prev.map(errorUpdater));
-            else setResults(prev => prev.map(r => r.id === regenerateId ? errorUpdater(r) : r));
+             const errorUpdater = (item: ResultItem) => ({ ...item, status: 'error' as Status, error: e.message });
+            if (isMainGeneration) {
+                setResults(prev => prev.map(errorUpdater));
+            } else {
+                setResults(prev => prev.map(r => r.id === regenerateId ? errorUpdater(r) : r));
+            }
         }
     }, [product, objective, audience, results]);
 
@@ -793,30 +797,40 @@ const CampaignIdeaGenerator = () => {
 const ScriptGenerator = () => {
     const [prompt, setPrompt] = useState('');
     const [results, setResults] = useState<ResultItem[]>([]);
-
+    
     const handleGenerate = useCallback(async (regenerateId?: number) => {
         if (!prompt) return;
+
         const isMainGeneration = typeof regenerateId === 'undefined';
         const isGenerating = results.some(r => r.status === 'loading');
         if (isGenerating && isMainGeneration) return;
 
-        if (isMainGeneration) setResults(Array(10).fill(null).map((_, i) => ({ id: i, status: 'loading' })));
-        else setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'loading' } : r));
+        if (isMainGeneration) {
+            setResults(Array(10).fill(null).map((_, i) => ({ id: i, status: 'loading' })));
+        } else {
+            setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'loading' } : r));
+        }
 
         try {
             const data = await generateScripts(prompt, isMainGeneration ? 10 : 1);
-            if (isMainGeneration) setResults(data.map((item, i) => ({ id: i, status: 'success', data: item })));
-            else setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'success', data: data[0] } : r));
+            if (isMainGeneration) {
+                setResults(data.map((item, i) => ({ id: i, status: 'success', data: item })));
+            } else {
+                setResults(prev => prev.map(r => r.id === regenerateId ? { ...r, status: 'success', data: data[0] } : r));
+            }
         } catch (e: any) {
-            const errorUpdater = (item: ResultItem) => ({ ...item, status: 'error' as Status, error: e.message });
-            if (isMainGeneration) setResults(prev => prev.map(errorUpdater));
-            else setResults(prev => prev.map(r => r.id === regenerateId ? errorUpdater(r) : r));
+             const errorUpdater = (item: ResultItem) => ({ ...item, status: 'error' as Status, error: e.message });
+            if (isMainGeneration) {
+                setResults(prev => prev.map(errorUpdater));
+            } else {
+                setResults(prev => prev.map(r => r.id === regenerateId ? errorUpdater(r) : r));
+            }
         }
     }, [prompt, results]);
 
     const inputs = (
-        <div className="control-section">
-            <label className="control-label">Describe el tema o mensaje clave de tu video</label>
+         <div className="control-section">
+            <label className="control-label">Tema o mensaje clave del video</label>
             <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={3} placeholder="Ej: Un tip rápido para mejorar la productividad por la mañana"></textarea>
         </div>
     );
@@ -825,24 +839,30 @@ const ScriptGenerator = () => {
 };
 
 // --- Card Components ---
-const CardBase = ({ item, children, onRegenerate }: { item: ResultItem, children: React.ReactNode, onRegenerate?: () => void }) => {
-    if (item.status === 'idle') return <div className="card card-placeholder">Esperando para generar...</div>;
-    if (item.status === 'loading') return <div className="card card-placeholder"><Loader /></div>;
-    if (item.status === 'error') return (
-        <div className="card card-error">
-            <p><strong>Error:</strong> {item.error}</p>
-            {onRegenerate && <button className="card-button" onClick={onRegenerate} title="Regenerar"><RegenerateIcon /></button>}
-        </div>
-    );
+const CardBase = ({ item, onRegenerate, children }: { item: ResultItem, onRegenerate: () => void, children: React.ReactNode }) => {
+    if (item.status === 'idle') {
+        return <div className="card card-placeholder"></div>;
+    }
+    if (item.status === 'loading') {
+        return <div className="card card-placeholder"><Loader /></div>;
+    }
+    if (item.status === 'error') {
+        return (
+            <div className="card card-error">
+                <p><strong>Error:</strong> {item.error}</p>
+                <button className="card-button" onClick={onRegenerate} style={{position: 'static', opacity: 1, marginTop: '1rem'}}><RegenerateIcon /></button>
+            </div>
+        );
+    }
     return <div className="card">{children}</div>;
 };
 
-const ImageCard = ({ item, title, onRegenerate }: { item: ResultItem, title?: string, onRegenerate: () => void }) => {
+const ImageCard = ({ item, onRegenerate }: { item: ResultItem, onRegenerate: () => void }) => {
     const handleDownload = () => {
         if (!item.imageUrl) return;
         const link = document.createElement('a');
         link.href = item.imageUrl;
-        link.download = `${title || 'generated-image'}-${item.id}.png`;
+        link.download = `logo-${Date.now()}.png`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -850,17 +870,17 @@ const ImageCard = ({ item, title, onRegenerate }: { item: ResultItem, title?: st
 
     return (
         <CardBase item={item} onRegenerate={onRegenerate}>
-            {item.imageUrl && (
-                 <>
-                    <div className="card-image-wrapper">
-                        <img src={item.imageUrl} alt={title || 'Generated content'} className="card-image" />
-                         <div className="card-actions">
-                            <button className="card-button" title="Descargar" onClick={handleDownload}><DownloadIcon /></button>
-                            <button className="card-button" title="Regenerar" onClick={onRegenerate}><RegenerateIcon /></button>
-                        </div>
-                    </div>
-                    {title && <div className="card-content"><h3 className="card-title">{title}</h3></div>}
-                </>
+            <div className="card-image-wrapper">
+                <img src={item.imageUrl} alt="Generated content" className="card-image" />
+                 <div className="card-actions">
+                    <button className="card-button" onClick={handleDownload}><DownloadIcon /></button>
+                    <button className="card-button" onClick={onRegenerate}><RegenerateIcon /></button>
+                </div>
+            </div>
+            {item.data?.style && (
+                <div className="card-content">
+                    <p className="card-title">{item.data.style}</p>
+                </div>
             )}
         </CardBase>
     );
@@ -868,177 +888,141 @@ const ImageCard = ({ item, title, onRegenerate }: { item: ResultItem, title?: st
 
 const BrandingCard = ({ item, onRegenerate }: { item: ResultItem, onRegenerate: () => void }) => (
     <CardBase item={item} onRegenerate={onRegenerate}>
-        {item.data && (
-            <>
-                <div className="card-actions">
-                    <button className="card-button" title="Regenerar" onClick={onRegenerate}><RegenerateIcon /></button>
+        <div className="card-content branding-card">
+            <div>
+                <h3 className="card-section-title">Paleta de Colores</h3>
+                <div className="palette">
+                    {item.data?.colors?.map((color: string) => <div key={color} className="color-swatch" style={{ background: color }}></div>)}
                 </div>
-                <div className="card-content">
-                    <div>
-                        <h4 className="card-section-title">Paleta de Colores</h4>
-                        <div className="palette">
-                            {item.data.colors?.map((color: string) => <div key={color} className="color-swatch" style={{ backgroundColor: color }}></div>)}
-                        </div>
-                    </div>
-                    <div className="branding-details">
-                       <h4 className="card-section-title">Tipografía</h4>
-                       <p><strong>{item.data.typography?.fontPairing}</strong></p>
-                    </div>
-                     <div className="branding-details">
-                       <h4 className="card-section-title">Tono de Voz</h4>
-                       <p>{item.data.toneOfVoice?.description}</p>
-                    </div>
-                </div>
-            </>
-        )}
+            </div>
+            <div className="branding-details">
+                <h3 className="card-section-title">Tipografía</h3>
+                <p><strong>Sugerencia:</strong> {item.data?.typography?.fontPairing}</p>
+            </div>
+             <div className="branding-details">
+                <h3 className="card-section-title">Tono de Voz</h3>
+                <p>{item.data?.toneOfVoice?.description}</p>
+            </div>
+            <div className="card-actions" style={{opacity: 1, position: 'static', alignSelf: 'flex-end'}}>
+                 <button className="card-button" onClick={onRegenerate}><RegenerateIcon /></button>
+            </div>
+        </div>
     </CardBase>
 );
 
 const SocialPostCard = ({ item, onRegenerate }: { item: ResultItem, onRegenerate: () => void }) => {
-    const [copyStatus, setCopyStatus] = useState('Copiar Texto');
-    
-    const handleCopy = () => {
-        if (!item.data?.copy) return;
-        navigator.clipboard.writeText(item.data.copy).then(() => {
-            setCopyStatus('¡Copiado!');
-            setTimeout(() => setCopyStatus('Copiar Texto'), 2000);
-        });
-    };
-    
-    return (
-         <div className="card social-post-card">
-            <CardBase item={item} onRegenerate={onRegenerate}>
-                {item.imageUrl && item.data && (
-                    <>
-                        <ImageCard item={item} onRegenerate={onRegenerate} />
-                        <div className="card-content">
-                            <div className="card-copy-text">{item.data.copy}</div>
-                            <button className="copy-button" onClick={handleCopy}>{copyStatus}</button>
-                        </div>
-                    </>
-                )}
-            </CardBase>
-        </div>
-    );
-};
-
-
-const CampaignCard = ({ item, onRegenerate }: { item: ResultItem, onRegenerate: () => void }) => {
-     const [copyStatus, setCopyStatus] = useState('Copiar Concepto');
-     const handleCopy = () => {
-        if (!item.data) return;
-        const textToCopy = `Concepto: ${item.data.concept}\n\nResumen: ${item.data.summary}\n\nAcciones Clave:\n- ${item.data.keyActions.join('\n- ')}`;
-        navigator.clipboard.writeText(textToCopy).then(() => {
-            setCopyStatus('¡Copiado!');
-            setTimeout(() => setCopyStatus('Copiar Concepto'), 2000);
-        });
+     const handleCopy = () => navigator.clipboard.writeText(item.data?.copy);
+     const handleDownload = () => {
+        if (!item.imageUrl) return;
+        const link = document.createElement('a');
+        link.href = item.imageUrl;
+        link.download = `social-post-${Date.now()}.png`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     };
 
     return (
         <CardBase item={item} onRegenerate={onRegenerate}>
-            {item.data && (
-                <>
-                    <div className="card-actions">
-                         <button className="card-button" title="Copiar Concepto" onClick={handleCopy}><CopyIcon /></button>
-                         <button className="card-button" title="Regenerar" onClick={onRegenerate}><RegenerateIcon /></button>
+             <div className="card-image-wrapper">
+                {item.imageUrl && <img src={item.imageUrl} alt="Generated social post" className="card-image" />}
+                <div className="card-actions">
+                    <button className="card-button" onClick={handleDownload}><DownloadIcon /></button>
+                    <button className="card-button" onClick={onRegenerate}><RegenerateIcon /></button>
+                </div>
+            </div>
+            <div className="card-content social-post-card">
+                <p className="card-copy-text">{item.data?.copy}</p>
+                <button className="copy-button" onClick={handleCopy}>Copiar Texto</button>
+            </div>
+        </CardBase>
+    );
+};
+
+const CampaignCard = ({ item, onRegenerate }: { item: ResultItem, onRegenerate: () => void }) => {
+    const textToCopy = `Concepto: ${item.data?.concept}\n\nResumen: ${item.data?.summary}\n\nAcciones Clave:\n- ${item.data?.keyActions?.join('\n- ')}`;
+    const handleCopy = () => navigator.clipboard.writeText(textToCopy);
+
+    return (
+        <CardBase item={item} onRegenerate={onRegenerate}>
+             <div className="card-content">
+                <div>
+                    <h3 className="card-section-title">{item.data?.concept}</h3>
+                    <p className="card-text-block">{item.data?.summary}</p>
+                </div>
+                 <div>
+                    <h3 className="card-section-title" style={{marginTop: '1rem'}}>Acciones Clave</h3>
+                    <div className="card-text-block">
+                        <ul>
+                           {item.data?.keyActions?.map((action: string, i: number) => <li key={i}>{action}</li>)}
+                        </ul>
                     </div>
-                    <div className="card-content" style={{gap: '1rem'}}>
-                       <h3 className="card-title" style={{textTransform: 'none', fontSize: '1.1rem', color: 'var(--text-color)'}}>{item.data.concept}</h3>
-                       <div>
-                           <h4 className="card-section-title">Resumen</h4>
-                           <p className="card-text-block">{item.data.summary}</p>
-                       </div>
-                        <div>
-                           <h4 className="card-section-title">Acciones Clave</h4>
-                           <div className="card-text-block">
-                               <ul>{item.data.keyActions.map((action: string, i: number) => <li key={i}>{action}</li>)}</ul>
-                           </div>
-                       </div>
-                    </div>
-                </>
-            )}
+                </div>
+                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem'}}>
+                     <button className="copy-button" onClick={handleCopy} style={{width: 'auto', flexGrow: 1, marginRight: '1rem'}}>Copiar Concepto</button>
+                     <button className="card-button" onClick={onRegenerate} style={{position: 'static', opacity: 1}}><RegenerateIcon /></button>
+                </div>
+            </div>
         </CardBase>
     );
 };
 
 const ScriptCard = ({ item, onRegenerate }: { item: ResultItem, onRegenerate: () => void }) => {
-    const [copyStatus, setCopyStatus] = useState('Copiar Guion');
-    const handleCopy = () => {
-        if (!item.data) return;
-        const textToCopy = `Concepto: ${item.data.concept}\n\nGuion:\n${item.data.script}`;
-        navigator.clipboard.writeText(textToCopy).then(() => {
-            setCopyStatus('¡Copiado!');
-            setTimeout(() => setCopyStatus('Copiar Guion'), 2000);
-        });
-    };
+    const textToCopy = `Concepto: ${item.data?.concept}\n\nGuion:\n${item.data?.script}`;
+    const handleCopy = () => navigator.clipboard.writeText(textToCopy);
 
     return (
         <CardBase item={item} onRegenerate={onRegenerate}>
-            {item.data && (
-                <>
-                    <div className="card-actions">
-                         <button className="card-button" title="Copiar Guion" onClick={handleCopy}><CopyIcon /></button>
-                         <button className="card-button" title="Regenerar" onClick={onRegenerate}><RegenerateIcon /></button>
-                    </div>
-                    <div className="card-content" style={{gap: '1rem'}}>
-                       <h3 className="card-title" style={{textTransform: 'none', fontSize: '1.1rem', color: 'var(--text-color)'}}>{item.data.concept}</h3>
-                       <div>
-                           <h4 className="card-section-title">Guion</h4>
-                           <p className="card-text-block">{item.data.script}</p>
-                       </div>
-                    </div>
-                </>
-            )}
+             <div className="card-content">
+                <div>
+                    <h3 className="card-section-title">{item.data?.concept}</h3>
+                    <p className="card-text-block">{item.data?.script}</p>
+                </div>
+                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem'}}>
+                     <button className="copy-button" onClick={handleCopy} style={{width: 'auto', flexGrow: 1, marginRight: '1rem'}}>Copiar Guion</button>
+                     <button className="card-button" onClick={onRegenerate} style={{position: 'static', opacity: 1}}><RegenerateIcon /></button>
+                </div>
+            </div>
         </CardBase>
     );
 };
 
 const CopywritingCard = ({ item, onRegenerate }: { item: ResultItem, onRegenerate: () => void }) => {
-    const [copyStatus, setCopyStatus] = useState('Copiar Texto');
-    const handleCopy = () => {
-        if (!item.data) return;
-        navigator.clipboard.writeText(item.data.copy).then(() => {
-            setCopyStatus('¡Copiado!');
-            setTimeout(() => setCopyStatus('Copiar Texto'), 2000);
-        });
-    };
-    
+    const handleCopy = () => navigator.clipboard.writeText(item.data?.copy);
+
     return (
         <CardBase item={item} onRegenerate={onRegenerate}>
-            {item.data && (
-                <div className="card-content">
-                    <p className="card-text-block" style={{maxHeight: '250px'}}>{item.data.copy}</p>
-                    <button className="copy-button" onClick={handleCopy}>{copyStatus}</button>
+            <div className="card-content">
+                <p className="card-text-block" style={{maxHeight: '250px'}}>{item.data?.copy}</p>
+                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem'}}>
+                     <button className="copy-button" onClick={handleCopy} style={{width: 'auto', flexGrow: 1, marginRight: '1rem'}}>Copiar Texto</button>
+                     <button className="card-button" onClick={onRegenerate} style={{position: 'static', opacity: 1}}><RegenerateIcon /></button>
                 </div>
-            )}
+            </div>
         </CardBase>
     );
 };
 
 const PersonaCard = ({ item, onRegenerate }: { item: ResultItem, onRegenerate: () => void }) => (
     <CardBase item={item} onRegenerate={onRegenerate}>
-        {item.data && (
-            <>
-                <div className="card-actions">
-                    <button className="card-button" title="Regenerar" onClick={onRegenerate}><RegenerateIcon /></button>
-                </div>
-                <div className="card-content persona-card">
-                    <div className="persona-header">
-                        <h3 className="persona-name">{item.data.name}, {item.data.age}</h3>
-                        <p className="card-title">{item.data.occupation}</p>
-                    </div>
-                    <p className="card-text-block" style={{fontStyle: 'italic', maxHeight: '80px'}}>{item.data.bio}</p>
-                    <div>
-                        <h4 className="card-section-title">Metas</h4>
-                        <p className="card-text-block" style={{maxHeight: '60px'}}>{item.data.goals}</p>
-                    </div>
-                    <div>
-                        <h4 className="card-section-title">Puntos de Dolor</h4>
-                        <p className="card-text-block" style={{maxHeight: '60px'}}>{item.data.painPoints}</p>
-                    </div>
-                </div>
-            </>
-        )}
+        <div className="card-content persona-card">
+            <div className="persona-header">
+                <h3 className="persona-name">{item.data?.name}, {item.data?.age}</h3>
+                <p className="card-title">{item.data?.occupation}</p>
+            </div>
+            <p className="card-text-block">{item.data?.bio}</p>
+            <div>
+                <h4 className="card-section-title">Metas</h4>
+                <p className="card-text-block" style={{maxHeight: '60px'}}>{item.data?.goals}</p>
+            </div>
+             <div>
+                <h4 className="card-section-title">Puntos de Dolor</h4>
+                <p className="card-text-block" style={{maxHeight: '60px'}}>{item.data?.painPoints}</p>
+            </div>
+            <div className="card-actions" style={{opacity: 1, position: 'static', alignSelf: 'flex-end', marginTop: '1rem'}}>
+                <button className="card-button" onClick={onRegenerate}><RegenerateIcon /></button>
+            </div>
+        </div>
     </CardBase>
 );
 
@@ -1049,47 +1033,44 @@ const SeoCard = ({ item, onRegenerate }: { item: ResultItem, onRegenerate: () =>
         if (type === 'meta') return <span className="card-tag tag-meta">Meta Descripción</span>;
         return null;
     };
-    
+    const handleCopy = () => navigator.clipboard.writeText(item.data?.content);
+
     return (
         <CardBase item={item} onRegenerate={onRegenerate}>
-            {item.data && (
-                 <>
-                    <div className="card-actions">
-                        <button className="card-button" title="Regenerar" onClick={onRegenerate}><RegenerateIcon /></button>
-                    </div>
-                    <div className="card-content seo-card">
-                        {getTag(item.data.type)}
-                        <p className="card-text-block" style={{maxHeight: '200px'}}>{item.data.content}</p>
-                    </div>
-                </>
-            )}
+            <div className="card-content seo-card">
+                {getTag(item.data?.type)}
+                <p className="card-text-block">{item.data?.content}</p>
+                 <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem'}}>
+                     <button className="copy-button" onClick={handleCopy} style={{width: 'auto', flexGrow: 1, marginRight: '1rem'}}>Copiar</button>
+                     <button className="card-button" onClick={onRegenerate} style={{position: 'static', opacity: 1}}><RegenerateIcon /></button>
+                </div>
+            </div>
         </CardBase>
     );
 };
 
+
 const NameSloganCard = ({ item, onRegenerate }: { item: ResultItem, onRegenerate: () => void }) => {
-     const getTag = (type: string) => {
+    const getTag = (type: string) => {
         if (type === 'name') return <span className="card-tag tag-name">Nombre</span>;
         if (type === 'slogan') return <span className="card-tag tag-slogan">Slogan</span>;
         return null;
     };
+    const handleCopy = () => navigator.clipboard.writeText(item.data?.suggestion);
+    
     return (
         <CardBase item={item} onRegenerate={onRegenerate}>
-            {item.data && (
-                 <>
-                    <div className="card-actions">
-                        <button className="card-button" title="Regenerar" onClick={onRegenerate}><RegenerateIcon /></button>
-                    </div>
-                    <div className="card-content name-slogan-card">
-                        {getTag(item.data.type)}
-                        <h3 style={{fontSize: '1.2rem', color: 'var(--text-color)'}}>{item.data.suggestion}</h3>
-                        <p className="card-text-block" style={{maxHeight: '150px'}}>{item.data.justification}</p>
-                    </div>
-                </>
-            )}
+            <div className="card-content name-slogan-card">
+                {getTag(item.data?.type)}
+                <h3 style={{fontSize: '1.2rem', color: 'var(--text-color)'}}>{item.data?.suggestion}</h3>
+                <p className="card-text-block">{item.data?.justification}</p>
+                 <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem'}}>
+                     <button className="copy-button" onClick={handleCopy} style={{width: 'auto', flexGrow: 1, marginRight: '1rem'}}>Copiar</button>
+                     <button className="card-button" onClick={onRegenerate} style={{position: 'static', opacity: 1}}><RegenerateIcon /></button>
+                </div>
+            </div>
         </CardBase>
     );
 };
-
 
 export default App;
