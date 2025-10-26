@@ -639,7 +639,7 @@ const VideoGenerator = () => {
                     isDone = true;
                     const uri = updatedOp.response?.generatedVideos?.[0]?.video?.uri;
                     if (uri) {
-                        const videoResponse = await fetch(`${uri}&key=${process.env.API_KEY}`);
+                        const videoResponse = await fetch(`${uri}&key=${process.env.NEXT_PUBLIC_API_KEY}`);
                         const blob = await videoResponse.blob();
                         setVideoUrl(URL.createObjectURL(blob));
                         setProgress('¡Video generado con éxito!');
