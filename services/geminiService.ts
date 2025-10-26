@@ -1,80 +1,100 @@
 import { GoogleGenAI, Modality } from "@google/genai";
 
-const API_KEY = process.env.API_KEY;
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const model = 'gemini-2.5-flash-image';
 
-if (!API_KEY) {
-  throw new Error("API_KEY environment variable not set");
+interface ImageData {
+    mimeType: string;
+    data: string; // base64
 }
 
-const ai = new GoogleGenAI({ apiKey: API_KEY });
-
-export interface MockupResult {
-  base64: string;
-  mimeType: string;
+interface GenerationResult {
+    base64Image: string;
+    mimeType: string;
 }
 
 /**
- * Generates a mockup image using a base image (logo) and a text prompt.
- * @param base64ImageData The base64 encoded string of the logo.
- * @param mimeType The MIME type of the logo (e.g., 'image/png').
- * @param prompt The text prompt describing the desired mockup scene.
- * @returns A promise that resolves to an object containing the base64 encoded string and mimeType of the generated mockup.
+ * Handles error responses from the Gemini API.
+ * @param response The raw response from the API.
+ * @returns A specific error message based on the finish reason.
  */
-export async function generateMockup(
-  base64ImageData: string,
-  mimeType: string,
-  prompt: string
-): Promise<MockupResult | null> {
-  try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
-      contents: {
-        parts: [
-          {
-            inlineData: {
-              data: base64ImageData,
-              mimeType: mimeType,
-            },
-          },
-          {
-            text: prompt,
-          },
-        ],
-      },
-      config: {
-        responseModalities: [Modality.IMAGE],
-      },
-    });
-
-    // Find the image part in the response
-    for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) {
-        return {
-          base64: part.inlineData.data,
-          mimeType: part.inlineData.mimeType,
-        };
-      }
-    }
-    
-    // If no image is found, provide a more specific error based on the finish reason.
-    const finishReason = response.candidates?.[0]?.finishReason;
-    console.warn(`Image generation failed for prompt "${prompt}". Finish reason: ${finishReason}`, response);
-    
+const getErrorFromResponse = (response: any): string => {
+    const finishReason = response?.candidates?.[0]?.finishReason;
     if (finishReason === 'NO_IMAGE') {
-      throw new Error("La IA no pudo crear una imagen. Intenta regenerar.");
+        return "La IA no pudo crear una imagen para este prompt. Intenta regenerar.";
     }
-    if (finishReason === 'SAFETY') {
-      throw new Error("Bloqueado por políticas de seguridad.");
+    if (finishReason === 'SAFETY' || finishReason === 'RECITATION' || finishReason === 'OTHER') {
+        return `Generación bloqueada por políticas de seguridad (${finishReason}).`;
     }
-    
-    throw new Error("La IA no devolvió una imagen. Intenta de nuevo.");
+    return "Gemini no devolvió una imagen para este prompt.";
+};
 
-  } catch (error) {
-    console.error(`Error calling Gemini API for prompt "${prompt}":`, error);
-    if (error instanceof Error) {
-        // Re-throw the specific error message from the try block or a generic one.
-        throw error;
+/**
+ * Generates a mockup image using a base logo and a text prompt.
+ * @param prompt The text prompt describing the mockup.
+ * @param logo The base logo image data.
+ * @returns A promise resolving to the generated image data.
+ */
+export async function generateMockup(prompt: string, logo: ImageData): Promise<GenerationResult> {
+    try {
+        const response = await ai.models.generateContent({
+            model: model,
+            contents: {
+                parts: [
+                    { inlineData: { mimeType: logo.mimeType, data: logo.data } },
+                    { text: prompt },
+                ],
+            },
+            config: {
+                responseModalities: [Modality.IMAGE],
+            },
+        });
+
+        const imagePart = response.candidates?.[0]?.content?.parts?.find(part => part.inlineData);
+
+        if (imagePart?.inlineData) {
+            return {
+                base64Image: imagePart.inlineData.data,
+                mimeType: imagePart.inlineData.mimeType,
+            };
+        } else {
+             throw new Error(getErrorFromResponse(response));
+        }
+    } catch (error) {
+        console.error("Error calling Gemini API for mockup:", error);
+        throw new Error(error instanceof Error ? error.message : "An unknown API error occurred");
     }
-    throw new Error("Error de comunicación con la API de Gemini.");
-  }
+}
+
+/**
+ * Generates a logo image from a text prompt.
+ * @param prompt The text prompt describing the logo.
+ * @returns A promise resolving to the generated image data.
+ */
+export async function generateLogo(prompt: string): Promise<GenerationResult> {
+    try {
+        const response = await ai.models.generateContent({
+            model: model,
+            contents: {
+                parts: [{ text: prompt }],
+            },
+            config: {
+                responseModalities: [Modality.IMAGE],
+            },
+        });
+        
+        const imagePart = response.candidates?.[0]?.content?.parts?.find(part => part.inlineData);
+
+        if (imagePart?.inlineData) {
+            return {
+                base64Image: imagePart.inlineData.data,
+                mimeType: imagePart.inlineData.mimeType,
+            };
+        } else {
+            throw new Error(getErrorFromResponse(response));
+        }
+    } catch (error) {
+        console.error("Error calling Gemini API for logo:", error);
+        throw new Error(error instanceof Error ? error.message : "An unknown API error occurred");
+    }
 }

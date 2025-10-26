@@ -12,7 +12,11 @@ export function fileToBase64(file: File): Promise<string> {
         // The result includes a prefix like "data:image/jpeg;base64,"
         // The API needs just the raw base64 data.
         const base64String = reader.result.split(',')[1];
-        resolve(base64String);
+        if (base64String) {
+          resolve(base64String);
+        } else {
+          reject(new Error("Could not extract base64 string from file data."));
+        }
       } else {
         reject(new Error("Failed to read file as base64 string."));
       }
