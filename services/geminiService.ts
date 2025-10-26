@@ -2,7 +2,7 @@ import { GoogleGenAI, Modality, Type } from "@google/genai";
 
 // --- Service Setup ---
 // Use a function to get a new instance, ensuring the latest API key from the Veo flow is used.
-const getAiClient = () => new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_API_KEY! });
+const getAiClient = () => new GoogleGenAI({ apiKey: process.env.API_KEY! });
 
 const allPrompts = [
     "Logo on a black t-shirt, worn by a person in a cafe.", "Logo on a white ceramic coffee mug, held by someone.", "Logo on a storefront window of a modern boutique.", "Logo on a business card, placed on a wooden desk.", "Logo on the side of a corporate delivery van.", "Logo on a laptop screen in a co-working space.", "Logo on a tote bag, carried over the shoulder.", "Logo on a billboard in a bustling city square at dusk.", "Logo embroidered on a baseball cap.", "Logo on a smartphone screen, showing the app splash page.", "Logo printed on a reusable water bottle.", "Logo on the wall of a modern office reception area.", "Logo on a piece of stationery, like a letterhead.", "Logo on a flag waving against a clear blue sky.", "Logo on a frosted glass office door.", "Logo on a product package box.",
