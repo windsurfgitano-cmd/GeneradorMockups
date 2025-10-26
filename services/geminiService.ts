@@ -8,7 +8,6 @@ if (!API_KEY) {
 
 const ai = new GoogleGenAI({ apiKey: API_KEY });
 
-// FIX: Added an interface for the return type for better type safety.
 export interface MockupResult {
   base64: string;
   mimeType: string;
@@ -25,7 +24,7 @@ export async function generateMockup(
   base64ImageData: string,
   mimeType: string,
   prompt: string
-): Promise<MockupResult | null> { // FIX: Updated return type to be more descriptive.
+): Promise<MockupResult | null> {
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
@@ -50,29 +49,32 @@ export async function generateMockup(
     // Find the image part in the response
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) {
-        // FIX: Return an object containing both the base64 data and the mimeType.
         return {
           base64: part.inlineData.data,
           mimeType: part.inlineData.mimeType,
         };
       }
     }
-
-    // If no image is found in the response, check for safety ratings or other issues
-    const safetyRatings = response.candidates?.[0]?.safetyRatings;
-    if (safetyRatings && safetyRatings.some(rating => rating.probability !== 'NEGLIGIBLE')) {
-        console.warn("Image generation may have been blocked due to safety settings.", safetyRatings);
-        throw new Error("The image could not be generated due to safety policies.");
+    
+    // If no image is found, provide a more specific error based on the finish reason.
+    const finishReason = response.candidates?.[0]?.finishReason;
+    console.warn(`Image generation failed for prompt "${prompt}". Finish reason: ${finishReason}`, response);
+    
+    if (finishReason === 'NO_IMAGE') {
+      throw new Error("La IA no pudo crear una imagen. Intenta regenerar.");
+    }
+    if (finishReason === 'SAFETY') {
+      throw new Error("Bloqueado por políticas de seguridad.");
     }
     
-    console.warn("No image data found in Gemini response.", response);
-    throw new Error("Gemini did not return an image for this mockup prompt.");
+    throw new Error("La IA no devolvió una imagen. Intenta de nuevo.");
 
   } catch (error) {
     console.error(`Error calling Gemini API for prompt "${prompt}":`, error);
     if (error instanceof Error) {
-        throw new Error(`Failed to generate mockup: ${error.message}`);
+        // Re-throw the specific error message from the try block or a generic one.
+        throw error;
     }
-    throw new Error("An unknown error occurred while communicating with the Gemini API.");
+    throw new Error("Error de comunicación con la API de Gemini.");
   }
 }
